@@ -8,7 +8,6 @@ import 'package:flutter/services.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:audio_session/audio_session.dart';
 import 'package:just_audio/just_audio.dart';
-import 'package:just_audio_background/just_audio_background.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:http/http.dart' as http;
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
@@ -241,14 +240,16 @@ class NotificationService {
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
-  await JustAudioBackground.init(
-    androidNotificationChannelId: 'com.example.mp3.audio',
-    androidNotificationChannelName: 'Audio Playback',
-    androidNotificationOngoing: true,
-    androidStopForegroundOnPause: false,
-  );
+  try {
+    if (!kIsWeb &&
+        (defaultTargetPlatform == TargetPlatform.android ||
+            defaultTargetPlatform == TargetPlatform.iOS)) {
+      await NotificationService().init();
+    }
+  } catch (e) {
+    debugPrint('Notification init skipped: $e');
+  }
 
-  await NotificationService().init();
   runApp(const AudioRepeaterApp());
 }
 
@@ -325,8 +326,16 @@ class _AudioLooperScreenState extends State<AudioLooperScreen> {
       NotificationService().setActionCallback(_handleNotificationAction);
     }
 
-    final session = await AudioSession.instance;
-    await session.configure(const AudioSessionConfiguration.music());
+    try {
+      if (!kIsWeb &&
+          (defaultTargetPlatform == TargetPlatform.android ||
+              defaultTargetPlatform == TargetPlatform.iOS)) {
+        final session = await AudioSession.instance;
+        await session.configure(const AudioSessionConfiguration.music());
+      }
+    } catch (e) {
+      debugPrint('Audio session init skipped: $e');
+    }
 
     try {
       _player.positionStream.listen(
@@ -773,21 +782,6 @@ class _AudioLooperScreenState extends State<AudioLooperScreen> {
     }
   }
 
-  void _downloadAudioFromSource(SavedAudioEntry entry) {
-    final isStream =
-        entry.path.startsWith('http://') || entry.path.startsWith('https://');
-
-    if (!isStream) {
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('This audio is already downloaded.')),
-      );
-      return;
-    }
-
-    _openAudioSource(entry);
-  }
-
   Future<void> _importAudio() async {
     FilePickerResult? result = await FilePicker.platform.pickFiles(
       type: FileType.custom,
@@ -824,14 +818,7 @@ class _AudioLooperScreenState extends State<AudioLooperScreen> {
           ? Uri.parse(path)
           : Uri.file(path);
 
-      final mediaItem = MediaItem(
-        id: path,
-        title: name,
-        album: sourceReciterName ?? 'MP360',
-        artist: sourceSurahName ?? sourceReciterName ?? 'Quran Audio',
-      );
-
-      await _player.setAudioSource(AudioSource.uri(sourceUri, tag: mediaItem));
+      await _player.setAudioSource(AudioSource.uri(sourceUri));
 
       // Update library
       int index = _library.indexWhere((e) => e.path == path);
@@ -1579,8 +1566,6 @@ class _AudioLooperScreenState extends State<AudioLooperScreen> {
                                       onSelected: (value) {
                                         if (value == 'source') {
                                           _openAudioSource(item);
-                                        } else if (value == 'download') {
-                                          _downloadAudioFromSource(item);
                                         } else if (value == 'move') {
                                           _moveAudioToGroup(item);
                                         } else if (value == 'edit') {
@@ -1598,10 +1583,6 @@ class _AudioLooperScreenState extends State<AudioLooperScreen> {
                                         }
                                       },
                                       itemBuilder: (context) => const [
-                                        PopupMenuItem(
-                                          value: 'download',
-                                          child: Text('Download audio'),
-                                        ),
                                         PopupMenuItem(
                                           value: 'source',
                                           child: Text(
@@ -1768,8 +1749,6 @@ class _AudioLooperScreenState extends State<AudioLooperScreen> {
                                         onSelected: (value) {
                                           if (value == 'source') {
                                             _openAudioSource(item);
-                                          } else if (value == 'download') {
-                                            _downloadAudioFromSource(item);
                                           } else if (value == 'move') {
                                             _moveAudioToGroup(item);
                                           } else if (value == 'edit') {
@@ -1787,10 +1766,6 @@ class _AudioLooperScreenState extends State<AudioLooperScreen> {
                                           }
                                         },
                                         itemBuilder: (context) => const [
-                                          PopupMenuItem(
-                                            value: 'download',
-                                            child: Text('Download audio'),
-                                          ),
                                           PopupMenuItem(
                                             value: 'source',
                                             child: Text(
