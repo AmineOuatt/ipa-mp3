@@ -2,10 +2,13 @@
 import 'dart:io';
 import 'dart:math';
 import 'package:file_picker/file_picker.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:google_fonts/google_fonts.dart';
+import 'package:audio_session/audio_session.dart';
 import 'package:just_audio/just_audio.dart';
+import 'package:just_audio_background/just_audio_background.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:http/http.dart' as http;
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
@@ -237,6 +240,14 @@ class NotificationService {
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
+
+  await JustAudioBackground.init(
+    androidNotificationChannelId: 'com.example.mp3.audio',
+    androidNotificationChannelName: 'Audio Playback',
+    androidNotificationOngoing: true,
+    androidStopForegroundOnPause: false,
+  );
+
   await NotificationService().init();
   runApp(const AudioRepeaterApp());
 }
@@ -281,6 +292,9 @@ class _AudioLooperScreenState extends State<AudioLooperScreen> {
   final AudioPlayer _player = AudioPlayer();
   SharedPreferences? _prefs;
 
+  bool get _supportsLocalPlaybackNotification =>
+      !kIsWeb && defaultTargetPlatform == TargetPlatform.android;
+
   List<SavedAudioEntry> _library = [];
   List<AudioGroup> _audioGroups = [];
   SavedAudioEntry? _currentEntry;
@@ -306,7 +320,13 @@ class _AudioLooperScreenState extends State<AudioLooperScreen> {
   Future<void> _initApp() async {
     _prefs = await SharedPreferences.getInstance();
     _loadLibrary();
-    NotificationService().setActionCallback(_handleNotificationAction);
+
+    if (_supportsLocalPlaybackNotification) {
+      NotificationService().setActionCallback(_handleNotificationAction);
+    }
+
+    final session = await AudioSession.instance;
+    await session.configure(const AudioSessionConfiguration.music());
 
     try {
       _player.positionStream.listen(
@@ -320,7 +340,9 @@ class _AudioLooperScreenState extends State<AudioLooperScreen> {
           }
 
           // Update notification with current position
-          if (_isPlaying && _currentEntry != null) {
+          if (_supportsLocalPlaybackNotification &&
+              _isPlaying &&
+              _currentEntry != null) {
             _showPlaybackNotification();
           }
         },
@@ -352,9 +374,11 @@ class _AudioLooperScreenState extends State<AudioLooperScreen> {
           });
 
           // Show/update notification when playing
-          if (state.playing && _currentEntry != null) {
+          if (_supportsLocalPlaybackNotification &&
+              state.playing &&
+              _currentEntry != null) {
             _showPlaybackNotification();
-          } else if (!state.playing) {
+          } else if (_supportsLocalPlaybackNotification && !state.playing) {
             // Cancel notification when paused/stopped
             NotificationService().cancelNotification();
           }
@@ -518,7 +542,13 @@ class _AudioLooperScreenState extends State<AudioLooperScreen> {
 
     if (didReplaceStreamEntry) {
       _saveLibrary();
-      _loadFile(path, filename);
+      _loadFile(
+        path,
+        filename,
+        sourceReciterName: sourceReciterName,
+        sourceSurahName: sourceSurahName,
+        sourceSurahId: sourceSurahId,
+      );
       return;
     }
 
@@ -537,7 +567,13 @@ class _AudioLooperScreenState extends State<AudioLooperScreen> {
         );
       });
       _saveLibrary();
-      _loadFile(path, filename);
+      _loadFile(
+        path,
+        filename,
+        sourceReciterName: sourceReciterName,
+        sourceSurahName: sourceSurahName,
+        sourceSurahId: sourceSurahId,
+      );
     } else {
       // Audio already exists - show confirmation dialog
       if (!mounted) return;
@@ -579,7 +615,13 @@ class _AudioLooperScreenState extends State<AudioLooperScreen> {
                   }
                 });
                 _saveLibrary();
-                _loadFile(path, filename);
+                _loadFile(
+                  path,
+                  filename,
+                  sourceReciterName: sourceReciterName,
+                  sourceSurahName: sourceSurahName,
+                  sourceSurahId: sourceSurahId,
+                );
               },
             ),
           ],
@@ -731,6 +773,21 @@ class _AudioLooperScreenState extends State<AudioLooperScreen> {
     }
   }
 
+  void _downloadAudioFromSource(SavedAudioEntry entry) {
+    final isStream =
+        entry.path.startsWith('http://') || entry.path.startsWith('https://');
+
+    if (!isStream) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('This audio is already downloaded.')),
+      );
+      return;
+    }
+
+    _openAudioSource(entry);
+  }
+
   Future<void> _importAudio() async {
     FilePickerResult? result = await FilePicker.platform.pickFiles(
       type: FileType.custom,
@@ -745,7 +802,13 @@ class _AudioLooperScreenState extends State<AudioLooperScreen> {
     }
   }
 
-  Future<void> _loadFile(String path, String name) async {
+  Future<void> _loadFile(
+    String path,
+    String name, {
+    String? sourceReciterName,
+    String? sourceSurahName,
+    String? sourceSurahId,
+  }) async {
     try {
       // Validate path
       if (path.isEmpty) {
@@ -761,16 +824,38 @@ class _AudioLooperScreenState extends State<AudioLooperScreen> {
           ? Uri.parse(path)
           : Uri.file(path);
 
-      await _player.setAudioSource(AudioSource.uri(sourceUri));
+      final mediaItem = MediaItem(
+        id: path,
+        title: name,
+        album: sourceReciterName ?? 'MP360',
+        artist: sourceSurahName ?? sourceReciterName ?? 'Quran Audio',
+      );
+
+      await _player.setAudioSource(AudioSource.uri(sourceUri, tag: mediaItem));
 
       // Update library
       int index = _library.indexWhere((e) => e.path == path);
       SavedAudioEntry entry;
       if (index == -1) {
-        entry = SavedAudioEntry(path: path, name: name);
+        entry = SavedAudioEntry(
+          path: path,
+          name: name,
+          sourceReciterName: sourceReciterName,
+          sourceSurahName: sourceSurahName,
+          sourceSurahId: sourceSurahId,
+        );
         _library.add(entry);
       } else {
         entry = _library[index];
+        if (sourceReciterName?.isNotEmpty == true) {
+          entry.sourceReciterName = sourceReciterName;
+        }
+        if (sourceSurahName?.isNotEmpty == true) {
+          entry.sourceSurahName = sourceSurahName;
+        }
+        if (sourceSurahId?.isNotEmpty == true) {
+          entry.sourceSurahId = sourceSurahId;
+        }
       }
 
       setState(() {
@@ -1494,6 +1579,8 @@ class _AudioLooperScreenState extends State<AudioLooperScreen> {
                                       onSelected: (value) {
                                         if (value == 'source') {
                                           _openAudioSource(item);
+                                        } else if (value == 'download') {
+                                          _downloadAudioFromSource(item);
                                         } else if (value == 'move') {
                                           _moveAudioToGroup(item);
                                         } else if (value == 'edit') {
@@ -1511,6 +1598,10 @@ class _AudioLooperScreenState extends State<AudioLooperScreen> {
                                         }
                                       },
                                       itemBuilder: (context) => const [
+                                        PopupMenuItem(
+                                          value: 'download',
+                                          child: Text('Download audio'),
+                                        ),
                                         PopupMenuItem(
                                           value: 'source',
                                           child: Text(
@@ -1533,7 +1624,14 @@ class _AudioLooperScreenState extends State<AudioLooperScreen> {
                                     ),
                                     onTap: () {
                                       Navigator.pop(context);
-                                      _loadFile(item.path, item.name);
+                                      _loadFile(
+                                        item.path,
+                                        item.name,
+                                        sourceReciterName:
+                                            item.sourceReciterName,
+                                        sourceSurahName: item.sourceSurahName,
+                                        sourceSurahId: item.sourceSurahId,
+                                      );
                                     },
                                   ),
                                 );
@@ -1670,6 +1768,8 @@ class _AudioLooperScreenState extends State<AudioLooperScreen> {
                                         onSelected: (value) {
                                           if (value == 'source') {
                                             _openAudioSource(item);
+                                          } else if (value == 'download') {
+                                            _downloadAudioFromSource(item);
                                           } else if (value == 'move') {
                                             _moveAudioToGroup(item);
                                           } else if (value == 'edit') {
@@ -1687,6 +1787,10 @@ class _AudioLooperScreenState extends State<AudioLooperScreen> {
                                           }
                                         },
                                         itemBuilder: (context) => const [
+                                          PopupMenuItem(
+                                            value: 'download',
+                                            child: Text('Download audio'),
+                                          ),
                                           PopupMenuItem(
                                             value: 'source',
                                             child: Text(
@@ -1709,7 +1813,14 @@ class _AudioLooperScreenState extends State<AudioLooperScreen> {
                                       ),
                                       onTap: () {
                                         Navigator.pop(context);
-                                        _loadFile(item.path, item.name);
+                                        _loadFile(
+                                          item.path,
+                                          item.name,
+                                          sourceReciterName:
+                                              item.sourceReciterName,
+                                          sourceSurahName: item.sourceSurahName,
+                                          sourceSurahId: item.sourceSurahId,
+                                        );
                                       },
                                     ),
                                   );
@@ -1753,6 +1864,7 @@ class _AudioLooperScreenState extends State<AudioLooperScreen> {
   }
 
   void _showPlaybackNotification() {
+    if (!_supportsLocalPlaybackNotification) return;
     if (_currentEntry == null) return;
 
     final currentTime = _formatDuration(_position);
@@ -1790,7 +1902,9 @@ class _AudioLooperScreenState extends State<AudioLooperScreen> {
   @override
   void dispose() {
     _player.dispose();
-    NotificationService().cancelNotification();
+    if (_supportsLocalPlaybackNotification) {
+      NotificationService().cancelNotification();
+    }
     super.dispose();
   }
 
