@@ -2,6 +2,7 @@
 import 'dart:io';
 import 'dart:math';
 import 'package:file_picker/file_picker.dart';
+import 'package:audio_service/audio_service.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -104,6 +105,123 @@ class AudioGroup {
     id: json['id'],
     name: json['name'],
     isExpanded: json['isExpanded'] ?? true,
+  );
+}
+
+class AppAudioHandler extends BaseAudioHandler with SeekHandler {
+  final AudioPlayer _player;
+
+  String? _mediaId;
+  String? _mediaTitle;
+  String? _mediaArtist;
+  Uri? _mediaArtUri;
+
+  AppAudioHandler(this._player) {
+    _player.playerStateStream.listen(_broadcastPlaybackState);
+    _player.durationStream.listen((Duration? duration) {
+      if (_mediaId != null) {
+        _publishMediaItem(duration: duration);
+      }
+    });
+  }
+
+  AudioPlayer get player => _player;
+
+  Future<void> publishNowPlaying({
+    required String id,
+    required String title,
+    String? artist,
+    Uri? artUri,
+    Duration? duration,
+  }) async {
+    _mediaId = id;
+    _mediaTitle = title;
+    _mediaArtist = artist;
+    _mediaArtUri = artUri;
+    _publishMediaItem(duration: duration ?? _player.duration);
+  }
+
+  void _publishMediaItem({Duration? duration}) {
+    final id = _mediaId;
+    final title = _mediaTitle;
+    if (id == null || title == null) return;
+
+    mediaItem.add(
+      MediaItem(
+        id: id,
+        title: title,
+        artist: _mediaArtist,
+        artUri: _mediaArtUri,
+        duration: duration,
+      ),
+    );
+  }
+
+  void _broadcastPlaybackState(PlayerState state) {
+    playbackState.add(
+      playbackState.value.copyWith(
+        controls: [
+          MediaControl.skipToPrevious,
+          MediaControl.rewind,
+          state.playing ? MediaControl.pause : MediaControl.play,
+          MediaControl.fastForward,
+          MediaControl.skipToNext,
+          MediaControl.stop,
+        ],
+        androidCompactActionIndices: const [0, 2, 4],
+        processingState: _mapProcessingState(state.processingState),
+        playing: state.playing,
+        updatePosition: _player.position,
+        bufferedPosition: _player.bufferedPosition,
+        speed: _player.speed,
+      ),
+    );
+  }
+
+  AudioProcessingState _mapProcessingState(ProcessingState processingState) {
+    switch (processingState) {
+      case ProcessingState.idle:
+        return AudioProcessingState.idle;
+      case ProcessingState.loading:
+        return AudioProcessingState.loading;
+      case ProcessingState.buffering:
+        return AudioProcessingState.buffering;
+      case ProcessingState.ready:
+        return AudioProcessingState.ready;
+      case ProcessingState.completed:
+        return AudioProcessingState.completed;
+    }
+  }
+
+  @override
+  Future<void> play() => _player.play();
+
+  @override
+  Future<void> pause() => _player.pause();
+
+  @override
+  Future<void> seek(Duration position) => _player.seek(position);
+}
+
+AppAudioHandler? appAudioHandler;
+late final AudioPlayer appPlayer;
+
+bool get _useIosMediaControls => !kIsWeb && Platform.isIOS;
+
+Future<void> _publishNowPlayingMetadata({
+  required String id,
+  required String title,
+  String? artist,
+  Duration? duration,
+}) async {
+  final handler = appAudioHandler;
+  if (handler == null) return;
+
+  await handler.publishNowPlaying(
+    id: id,
+    title: title,
+    artist: artist,
+    duration: duration,
   );
 }
 
@@ -240,6 +358,17 @@ class NotificationService {
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
+  if (_useIosMediaControls) {
+    final player = AudioPlayer();
+    appAudioHandler = await AudioService.init(
+      builder: () => AppAudioHandler(player),
+    );
+    appPlayer = appAudioHandler!.player;
+  } else {
+    appAudioHandler = null;
+    appPlayer = AudioPlayer();
+  }
+
   try {
     if (!kIsWeb &&
         (defaultTargetPlatform == TargetPlatform.android ||
@@ -290,7 +419,7 @@ class AudioLooperScreen extends StatefulWidget {
 }
 
 class _AudioLooperScreenState extends State<AudioLooperScreen> {
-  final AudioPlayer _player = AudioPlayer();
+  late final AudioPlayer _player;
   SharedPreferences? _prefs;
 
   bool get _supportsLocalPlaybackNotification =>
@@ -315,6 +444,7 @@ class _AudioLooperScreenState extends State<AudioLooperScreen> {
   @override
   void initState() {
     super.initState();
+    _player = appPlayer;
     _initApp();
   }
 
@@ -819,6 +949,7 @@ class _AudioLooperScreenState extends State<AudioLooperScreen> {
           : Uri.file(path);
 
       await _player.setAudioSource(AudioSource.uri(sourceUri));
+      await _player.setLoopMode(_isLooping ? LoopMode.one : LoopMode.off);
 
       // Update library
       int index = _library.indexWhere((e) => e.path == path);
@@ -851,6 +982,13 @@ class _AudioLooperScreenState extends State<AudioLooperScreen> {
         _loopEnd = _player.duration ?? _duration;
         _selectedSegmentId = null;
       });
+
+      await _publishNowPlayingMetadata(
+        id: path,
+        title: name,
+        artist: sourceReciterName ?? 'MP360',
+        duration: _player.duration ?? _duration,
+      );
 
       _saveLibrary();
       _generateWaveform(path);
@@ -2062,6 +2200,9 @@ class _AudioLooperScreenState extends State<AudioLooperScreen> {
                           _selectedSegmentId = null;
                         });
                         _player.seek(Duration.zero);
+                        _player.setLoopMode(
+                          _isLooping ? LoopMode.one : LoopMode.off,
+                        );
                       }),
                       _buildControlBtn("Set End", () {
                         HapticFeedback.mediumImpact();
@@ -2072,6 +2213,9 @@ class _AudioLooperScreenState extends State<AudioLooperScreen> {
                           }
                           _selectedSegmentId = null;
                         });
+                        _player.setLoopMode(
+                          _isLooping ? LoopMode.one : LoopMode.off,
+                        );
                       }),
                     ],
                   ),
@@ -2092,6 +2236,9 @@ class _AudioLooperScreenState extends State<AudioLooperScreen> {
                         onPressed: () {
                           HapticFeedback.selectionClick();
                           setState(() => _isLooping = !_isLooping);
+                          _player.setLoopMode(
+                            _isLooping ? LoopMode.one : LoopMode.off,
+                          );
                         },
                       ),
                       const SizedBox(width: 10),
