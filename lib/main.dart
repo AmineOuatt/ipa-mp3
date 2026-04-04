@@ -697,6 +697,13 @@ class _AudioLooperScreenState extends State<AudioLooperScreen> {
     await _player.setAudioSource(source);
     await _player.setLoopMode(_isLooping ? LoopMode.one : LoopMode.off);
 
+    await appAudioHandler.updateMediaItem(
+      id: _currentEntry!.path,
+      title: _currentEntry!.name,
+      artist: _currentEntry!.sourceReciterName ?? 'MP360',
+      duration: _player.duration ?? _duration,
+    );
+
     if (useClippedSource) {
       await _player.seek(_loopStart);
     }
@@ -996,6 +1003,13 @@ class _AudioLooperScreenState extends State<AudioLooperScreen> {
 
       await _player.setAudioSource(AudioSource.uri(sourceUri));
       await _player.setLoopMode(_isLooping ? LoopMode.one : LoopMode.off);
+
+      await appAudioHandler.updateMediaItem(
+        id: path,
+        title: name,
+        artist: sourceReciterName ?? 'MP360',
+        duration: _player.duration ?? _duration,
+      );
 
       // Update library
       int index = _library.indexWhere((e) => e.path == path);
@@ -2054,7 +2068,6 @@ class _AudioLooperScreenState extends State<AudioLooperScreen> {
 
   @override
   void dispose() {
-    _player.dispose();
     if (_supportsLocalPlaybackNotification) {
       NotificationService().cancelNotification();
     }
@@ -2847,6 +2860,13 @@ class _SegmentPlayerScreenState extends State<SegmentPlayerScreen> {
     );
     await widget.player.setLoopMode(_isLooping ? LoopMode.one : LoopMode.off);
     await widget.player.seek(currentSegment.start);
+
+    await appAudioHandler.updateMediaItem(
+      id: '${widget.audioPath}#${currentSegment.id}',
+      title: currentSegment.name,
+      artist: widget.trackName,
+      duration: currentSegment.end - currentSegment.start,
+    );
 
     if (wasPlaying) {
       await widget.player.play();
