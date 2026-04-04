@@ -111,8 +111,6 @@ class AudioGroup {
 
 class AppAudioHandler extends BaseAudioHandler with SeekHandler {
   final AudioPlayer _player;
-  StreamSubscription<PlayerState>? _playerStateSubscription;
-  StreamSubscription<Duration>? _durationSubscription;
 
   String? _mediaId;
   String? _mediaTitle;
@@ -121,11 +119,9 @@ class AppAudioHandler extends BaseAudioHandler with SeekHandler {
   Uri? _mediaArtUri;
 
   AppAudioHandler(this._player) {
-    _playerStateSubscription = _player.playerStateStream.listen(
-      _broadcastPlaybackState,
-    );
+    _player.playerStateStream.listen(_broadcastPlaybackState);
 
-    _durationSubscription = _player.durationStream.listen((duration) {
+    _player.durationStream.listen((Duration? duration) {
       if (_mediaId != null) {
         _publishMediaItem(duration: duration);
       }
@@ -139,7 +135,7 @@ class AppAudioHandler extends BaseAudioHandler with SeekHandler {
 
   Future<void> setLoopMode(LoopMode mode) => _player.setLoopMode(mode);
 
-  Future<void> updateMediaItem({
+  Future<void> publishNowPlaying({
     required String id,
     required String title,
     String? artist,
@@ -226,14 +222,6 @@ class AppAudioHandler extends BaseAudioHandler with SeekHandler {
   Future<void> stop() async {
     await _player.stop();
     await super.stop();
-  }
-
-  @override
-  Future<void> close() async {
-    await _playerStateSubscription?.cancel();
-    await _durationSubscription?.cancel();
-    await _player.dispose();
-    await super.close();
   }
 }
 
@@ -373,9 +361,9 @@ void main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
   final player = AudioPlayer();
-  appAudioHandler =
-      await AudioService.init(builder: () => AppAudioHandler(player))
-          as AppAudioHandler;
+  appAudioHandler = await AudioService.init(
+    builder: () => AppAudioHandler(player),
+  );
 
   try {
     if (!kIsWeb &&
@@ -624,7 +612,6 @@ class _AudioLooperScreenState extends State<AudioLooperScreen> {
                     debugPrint("Error parsing library entry: $e");
                     return null;
                   }
-                  ;
                 })
                 .whereType<SavedAudioEntry>()
                 .toList();
@@ -646,7 +633,6 @@ class _AudioLooperScreenState extends State<AudioLooperScreen> {
                     debugPrint("Error parsing group entry: $e");
                     return null;
                   }
-                  ;
                 })
                 .whereType<AudioGroup>()
                 .toList();
@@ -697,7 +683,7 @@ class _AudioLooperScreenState extends State<AudioLooperScreen> {
     await _player.setAudioSource(source);
     await _player.setLoopMode(_isLooping ? LoopMode.one : LoopMode.off);
 
-    await appAudioHandler.updateMediaItem(
+    await appAudioHandler.publishNowPlaying(
       id: _currentEntry!.path,
       title: _currentEntry!.name,
       artist: _currentEntry!.sourceReciterName ?? 'MP360',
@@ -1004,7 +990,7 @@ class _AudioLooperScreenState extends State<AudioLooperScreen> {
       await _player.setAudioSource(AudioSource.uri(sourceUri));
       await _player.setLoopMode(_isLooping ? LoopMode.one : LoopMode.off);
 
-      await appAudioHandler.updateMediaItem(
+      await appAudioHandler.publishNowPlaying(
         id: path,
         title: name,
         artist: sourceReciterName ?? 'MP360',
@@ -1705,7 +1691,7 @@ class _AudioLooperScreenState extends State<AudioLooperScreen> {
                       child: ListView.builder(
                         itemCount:
                             _audioGroups.length +
-                            (_library.where((e) => e.groupId == null).length > 0
+                            (_library.where((e) => e.groupId == null).isNotEmpty
                                 ? 1
                                 : 0),
                         itemBuilder: (context, index) {
@@ -2835,8 +2821,8 @@ class _SegmentPlayerScreenState extends State<SegmentPlayerScreen> {
   late int _currentIndex;
 
   // Stream subscriptions to clean up
-  late var _positionSubscription;
-  late var _stateSubscription;
+  late StreamSubscription<Duration> _positionSubscription;
+  late StreamSubscription<PlayerState> _stateSubscription;
 
   LoopBookmark get currentSegment => widget.segments[_currentIndex];
 
@@ -2861,7 +2847,7 @@ class _SegmentPlayerScreenState extends State<SegmentPlayerScreen> {
     await widget.player.setLoopMode(_isLooping ? LoopMode.one : LoopMode.off);
     await widget.player.seek(currentSegment.start);
 
-    await appAudioHandler.updateMediaItem(
+    await appAudioHandler.publishNowPlaying(
       id: '${widget.audioPath}#${currentSegment.id}',
       title: currentSegment.name,
       artist: widget.trackName,
@@ -3309,8 +3295,9 @@ class _SegmentPlayerScreenState extends State<SegmentPlayerScreen> {
                         if (tempEnd <= tempStart) {
                           tempStart =
                               tempEnd - Duration(milliseconds: minGapMs);
-                          if (tempStart < Duration.zero)
+                          if (tempStart < Duration.zero) {
                             tempStart = Duration.zero;
+                          }
                         }
                       });
                     },
