@@ -1,7 +1,9 @@
-﻿import 'dart:convert';
+﻿import 'dart:async';
+import 'dart:convert';
 import 'dart:io';
 import 'dart:math';
 import 'package:file_picker/file_picker.dart';
+import 'package:audio_service/audio_service.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -106,6 +108,136 @@ class AudioGroup {
     isExpanded: json['isExpanded'] ?? true,
   );
 }
+
+class AppAudioHandler extends BaseAudioHandler with SeekHandler {
+  final AudioPlayer _player;
+  StreamSubscription<PlayerState>? _playerStateSubscription;
+  StreamSubscription<Duration>? _durationSubscription;
+
+  String? _mediaId;
+  String? _mediaTitle;
+  String? _mediaArtist;
+  String? _mediaAlbum;
+  Uri? _mediaArtUri;
+
+  AppAudioHandler(this._player) {
+    _playerStateSubscription = _player.playerStateStream.listen(
+      _broadcastPlaybackState,
+    );
+
+    _durationSubscription = _player.durationStream.listen((duration) {
+      if (_mediaId != null) {
+        _publishMediaItem(duration: duration);
+      }
+    });
+  }
+
+  AudioPlayer get player => _player;
+
+  Future<void> setAudioSource(AudioSource source) =>
+      _player.setAudioSource(source);
+
+  Future<void> setLoopMode(LoopMode mode) => _player.setLoopMode(mode);
+
+  Future<void> updateMediaItem({
+    required String id,
+    required String title,
+    String? artist,
+    String? album,
+    Uri? artUri,
+    Duration? duration,
+  }) async {
+    _mediaId = id;
+    _mediaTitle = title;
+    _mediaArtist = artist;
+    _mediaAlbum = album;
+    _mediaArtUri = artUri;
+    _publishMediaItem(duration: duration ?? _player.duration);
+  }
+
+  void _publishMediaItem({Duration? duration}) {
+    final id = _mediaId;
+    final title = _mediaTitle;
+    if (id == null || title == null) return;
+
+    mediaItem.add(
+      MediaItem(
+        id: id,
+        title: title,
+        artist: _mediaArtist,
+        album: _mediaAlbum,
+        artUri: _mediaArtUri,
+        duration: duration,
+      ),
+    );
+  }
+
+  void _broadcastPlaybackState(PlayerState state) {
+    playbackState.add(
+      playbackState.value.copyWith(
+        controls: [
+          MediaControl.skipToPrevious,
+          MediaControl.rewind,
+          state.playing ? MediaControl.pause : MediaControl.play,
+          MediaControl.fastForward,
+          MediaControl.skipToNext,
+          MediaControl.stop,
+        ],
+        androidCompactActionIndices: const [0, 2, 4],
+        systemActions: const {
+          MediaAction.seek,
+          MediaAction.seekForward,
+          MediaAction.seekBackward,
+        },
+        processingState: _mapProcessingState(state.processingState),
+        playing: state.playing,
+        updatePosition: _player.position,
+        bufferedPosition: _player.bufferedPosition,
+        speed: _player.speed,
+      ),
+    );
+  }
+
+  AudioProcessingState _mapProcessingState(ProcessingState processingState) {
+    switch (processingState) {
+      case ProcessingState.idle:
+        return AudioProcessingState.idle;
+      case ProcessingState.loading:
+        return AudioProcessingState.loading;
+      case ProcessingState.buffering:
+        return AudioProcessingState.buffering;
+      case ProcessingState.ready:
+        return AudioProcessingState.ready;
+      case ProcessingState.completed:
+        return AudioProcessingState.completed;
+    }
+  }
+
+  @override
+  Future<void> play() => _player.play();
+
+  @override
+  Future<void> pause() => _player.pause();
+
+  @override
+  Future<void> seek(Duration position) => _player.seek(position);
+
+  @override
+  Future<void> stop() async {
+    await _player.stop();
+    await super.stop();
+  }
+
+  @override
+  Future<void> close() async {
+    await _playerStateSubscription?.cancel();
+    await _durationSubscription?.cancel();
+    await _player.dispose();
+    await super.close();
+  }
+}
+
+late final AppAudioHandler appAudioHandler;
 
 // --- NOTIFICATION SERVICE ---
 
@@ -240,6 +372,11 @@ class NotificationService {
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
+  final player = AudioPlayer();
+  appAudioHandler =
+      await AudioService.init(builder: () => AppAudioHandler(player))
+          as AppAudioHandler;
+
   try {
     if (!kIsWeb &&
         (defaultTargetPlatform == TargetPlatform.android ||
@@ -290,7 +427,7 @@ class AudioLooperScreen extends StatefulWidget {
 }
 
 class _AudioLooperScreenState extends State<AudioLooperScreen> {
-  final AudioPlayer _player = AudioPlayer();
+  late final AudioPlayer _player;
   SharedPreferences? _prefs;
 
   bool get _supportsLocalPlaybackNotification =>
@@ -315,6 +452,7 @@ class _AudioLooperScreenState extends State<AudioLooperScreen> {
   @override
   void initState() {
     super.initState();
+    _player = appAudioHandler.player;
     _initApp();
   }
 
