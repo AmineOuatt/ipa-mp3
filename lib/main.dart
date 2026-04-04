@@ -530,6 +530,44 @@ class _AudioLooperScreenState extends State<AudioLooperScreen> {
     await _prefs?.setString('audioGroups', groupsJson);
   }
 
+  bool get _hasCustomLoopRange {
+    return _loopEnd > _loopStart &&
+        (_loopStart > Duration.zero ||
+            (_duration > Duration.zero && _loopEnd < _duration));
+  }
+
+  Future<void> _syncLoopPlaybackSource({bool preservePlayback = true}) async {
+    if (_currentEntry == null) return;
+
+    final sourceUri =
+        _currentEntry!.path.startsWith('http://') ||
+            _currentEntry!.path.startsWith('https://')
+        ? Uri.parse(_currentEntry!.path)
+        : Uri.file(_currentEntry!.path);
+
+    final bool wasPlaying = preservePlayback && _player.playing;
+    final bool useClippedSource = _isLooping && _hasCustomLoopRange;
+
+    final AudioSource source = useClippedSource
+        ? ClippingAudioSource(
+            child: AudioSource.uri(sourceUri),
+            start: _loopStart,
+            end: _loopEnd,
+          )
+        : AudioSource.uri(sourceUri);
+
+    await _player.setAudioSource(source);
+    await _player.setLoopMode(_isLooping ? LoopMode.one : LoopMode.off);
+
+    if (useClippedSource) {
+      await _player.seek(_loopStart);
+    }
+
+    if (wasPlaying) {
+      await _player.play();
+    }
+  }
+
   void _consumeQuranBrowserResult(Map result) {
     final path = result['path']?.toString() ?? '';
     final filename = result['name']?.toString() ?? '';
@@ -819,6 +857,7 @@ class _AudioLooperScreenState extends State<AudioLooperScreen> {
           : Uri.file(path);
 
       await _player.setAudioSource(AudioSource.uri(sourceUri));
+      await _player.setLoopMode(_isLooping ? LoopMode.one : LoopMode.off);
 
       // Update library
       int index = _library.indexWhere((e) => e.path == path);
@@ -1822,6 +1861,7 @@ class _AudioLooperScreenState extends State<AudioLooperScreen> {
       MaterialPageRoute(
         builder: (context) => SegmentPlayerScreen(
           player: _player,
+          audioPath: _currentEntry!.path,
           segments: _currentEntry!.segments,
           initialIndex: initialIndex,
           trackName: _currentEntry?.name ?? 'Unknown Track',
@@ -2018,6 +2058,9 @@ class _AudioLooperScreenState extends State<AudioLooperScreen> {
                               _player.seek(_loopStart);
                             }
                           },
+                          onChangeEnd: (values) {
+                            _syncLoopPlaybackSource();
+                          },
                         ),
 
                         // Timestamps
@@ -2053,6 +2096,7 @@ class _AudioLooperScreenState extends State<AudioLooperScreen> {
                           if (_loopStart > _loopEnd) _loopEnd = _duration;
                           _selectedSegmentId = null;
                         });
+                        _syncLoopPlaybackSource();
                       }),
                       _buildControlBtn("Reset", () {
                         HapticFeedback.mediumImpact();
@@ -2062,6 +2106,7 @@ class _AudioLooperScreenState extends State<AudioLooperScreen> {
                           _selectedSegmentId = null;
                         });
                         _player.seek(Duration.zero);
+                        _syncLoopPlaybackSource();
                       }),
                       _buildControlBtn("Set End", () {
                         HapticFeedback.mediumImpact();
@@ -2072,6 +2117,7 @@ class _AudioLooperScreenState extends State<AudioLooperScreen> {
                           }
                           _selectedSegmentId = null;
                         });
+                        _syncLoopPlaybackSource();
                       }),
                     ],
                   ),
@@ -2092,6 +2138,7 @@ class _AudioLooperScreenState extends State<AudioLooperScreen> {
                         onPressed: () {
                           HapticFeedback.selectionClick();
                           setState(() => _isLooping = !_isLooping);
+                          _syncLoopPlaybackSource();
                         },
                       ),
                       const SizedBox(width: 10),
@@ -2610,6 +2657,7 @@ class _WaveformPainter extends CustomPainter {
 
 class SegmentPlayerScreen extends StatefulWidget {
   final AudioPlayer player;
+  final String audioPath;
   final List<LoopBookmark> segments;
   final int initialIndex;
   final String trackName;
@@ -2618,6 +2666,7 @@ class SegmentPlayerScreen extends StatefulWidget {
   const SegmentPlayerScreen({
     super.key,
     required this.player,
+    required this.audioPath,
     required this.segments,
     required this.initialIndex,
     required this.trackName,
@@ -2640,11 +2689,39 @@ class _SegmentPlayerScreenState extends State<SegmentPlayerScreen> {
 
   LoopBookmark get currentSegment => widget.segments[_currentIndex];
 
+  Future<void> _syncSegmentPlaybackSource({
+    bool preservePlayback = true,
+  }) async {
+    final sourceUri =
+        widget.audioPath.startsWith('http://') ||
+            widget.audioPath.startsWith('https://')
+        ? Uri.parse(widget.audioPath)
+        : Uri.file(widget.audioPath);
+
+    final bool wasPlaying = preservePlayback && widget.player.playing;
+
+    await widget.player.setAudioSource(
+      ClippingAudioSource(
+        child: AudioSource.uri(sourceUri),
+        start: currentSegment.start,
+        end: currentSegment.end,
+      ),
+    );
+    await widget.player.setLoopMode(_isLooping ? LoopMode.one : LoopMode.off);
+    await widget.player.seek(currentSegment.start);
+
+    if (wasPlaying) {
+      await widget.player.play();
+    }
+  }
+
   @override
   void initState() {
     super.initState();
     _currentIndex = widget.initialIndex;
     _position = currentSegment.start;
+
+    _syncSegmentPlaybackSource();
 
     _positionSubscription = widget.player.positionStream.listen((pos) {
       if (!mounted) return;
@@ -2677,7 +2754,7 @@ class _SegmentPlayerScreenState extends State<SegmentPlayerScreen> {
       setState(() {
         _currentIndex++;
       });
-      widget.player.seek(currentSegment.start);
+      _syncSegmentPlaybackSource();
     } else {
       widget.player.pause();
     }
@@ -2693,7 +2770,7 @@ class _SegmentPlayerScreenState extends State<SegmentPlayerScreen> {
       setState(() {
         _currentIndex--;
       });
-      widget.player.seek(currentSegment.start);
+      _syncSegmentPlaybackSource();
     }
   }
 
@@ -2703,7 +2780,7 @@ class _SegmentPlayerScreenState extends State<SegmentPlayerScreen> {
       setState(() {
         _currentIndex++;
       });
-      widget.player.seek(currentSegment.start);
+      _syncSegmentPlaybackSource();
     } else {
       widget.player.seek(currentSegment.end);
     }
@@ -2888,6 +2965,7 @@ class _SegmentPlayerScreenState extends State<SegmentPlayerScreen> {
                     onPressed: () {
                       HapticFeedback.selectionClick();
                       setState(() => _isLooping = !_isLooping);
+                      _syncSegmentPlaybackSource();
                     },
                   ),
                   IconButton(
@@ -3101,7 +3179,7 @@ class _SegmentPlayerScreenState extends State<SegmentPlayerScreen> {
                             currentSegment.start = tempStart;
                             currentSegment.end = tempEnd;
                           });
-                          widget.player.seek(currentSegment.start);
+                          _syncSegmentPlaybackSource();
                           widget.onSegmentsUpdated();
                           Navigator.pop(ctx);
                         },
