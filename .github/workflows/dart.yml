@@ -1,4 +1,4 @@
-name: iOS-ipa-build
+name: Mobile-ipa-apk-build
 
 on:
   workflow_dispatch:
@@ -37,6 +37,30 @@ jobs:
         with:
           repo_token: ${{ secrets.GITHUB_TOKEN }}
           file: build/ios/iphoneos/FlutterIpaExport.ipa
+          tag: v3.0
+          overwrite: true
+          body: "This is first release"
+
+  build-android:
+    name: 🤖 Android Build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: 'stable'
+
+      - run: flutter pub get
+
+      - run: flutter build apk --release
+
+      - name: Upload APK to release
+        uses: svenstaro/upload-release-action@v2
+        with:
+          repo_token: ${{ secrets.GITHUB_TOKEN }}
+          file: build/app/outputs/flutter-apk/app-release.apk
+          asset_name: FlutterApkExport.apk
           tag: v3.0
           overwrite: true
           body: "This is first release"
