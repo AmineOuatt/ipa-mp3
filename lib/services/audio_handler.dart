@@ -95,4 +95,3 @@ class AppAudioHandler extends BaseAudioHandler with SeekHandler {
   @override
   Future<void> seek(Duration position) => _player.seek(position);
 }
-
