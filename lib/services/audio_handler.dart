@@ -1,4 +1,7 @@
+import 'dart:io';
+
 import 'package:audio_service/audio_service.dart';
+import 'package:flutter/foundation.dart';
 import 'package:just_audio/just_audio.dart';
 
 class AppAudioHandler extends BaseAudioHandler with SeekHandler {
@@ -94,4 +97,26 @@ class AppAudioHandler extends BaseAudioHandler with SeekHandler {
 
   @override
   Future<void> seek(Duration position) => _player.seek(position);
+}
+
+AppAudioHandler? appAudioHandler;
+late final AudioPlayer appPlayer;
+
+bool get useIosMediaControls => !kIsWeb && Platform.isIOS;
+
+Future<void> publishNowPlayingMetadata({
+  required String id,
+  required String title,
+  String? artist,
+  Duration? duration,
+}) async {
+  final handler = appAudioHandler;
+  if (handler == null) return;
+
+  await handler.publishNowPlaying(
+    id: id,
+    title: title,
+    artist: artist,
+    duration: duration,
+  );
 }

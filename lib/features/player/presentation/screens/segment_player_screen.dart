@@ -532,4 +532,3 @@ class _SegmentPlayerScreenState extends State<SegmentPlayerScreen> {
     );
   }
 }
-

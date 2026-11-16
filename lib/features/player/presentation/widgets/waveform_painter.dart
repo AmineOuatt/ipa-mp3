@@ -70,4 +70,3 @@ class WaveformPainter extends CustomPainter {
 
 // Alias for backwards compatibility with any private naming
 typedef WaveformPainterAlias = WaveformPainter;
-
