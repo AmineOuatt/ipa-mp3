@@ -17,4 +17,3 @@ class AudioGroup {
     isExpanded: json['isExpanded'] ?? true,
   );
 }
-

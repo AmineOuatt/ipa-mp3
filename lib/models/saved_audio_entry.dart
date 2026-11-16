@@ -42,4 +42,3 @@ class SavedAudioEntry {
         sourceSurahId: json['sourceSurahId'],
       );
 }
-

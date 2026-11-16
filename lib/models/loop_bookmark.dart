@@ -25,4 +25,3 @@ class LoopBookmark {
     end: Duration(milliseconds: json['end']),
   );
 }
-
