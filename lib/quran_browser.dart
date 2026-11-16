@@ -1,4 +1,4 @@
-﻿import 'dart:async';
+import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 import 'package:flutter/material.dart';
@@ -114,7 +114,7 @@ class _QuranBrowserModeState extends State<QuranBrowserMode> {
       }
     }
 
-    matched ??= _reciters.cast<dynamic?>().firstWhere(
+    matched ??= _reciters.cast<dynamic>().firstWhere(
       (reciter) => (reciter?['name'] ?? '').toString().toLowerCase().contains(
         normalizedNeedle,
       ),
@@ -150,8 +150,9 @@ class _QuranBrowserModeState extends State<QuranBrowserMode> {
     String? initialSurahName,
     String? initialSurahId,
   }) async {
-    if (reciter['moshaf'] == null || (reciter['moshaf'] as List).isEmpty)
+    if (reciter['moshaf'] == null || (reciter['moshaf'] as List).isEmpty) {
       return;
+    }
 
     // Automatically select the first moshaf
     final moshaf = reciter['moshaf'][0];
@@ -490,7 +491,9 @@ class _SurahSelectionScreenState extends State<SurahSelectionScreen> {
             backgroundColor: Colors.redAccent,
           ),
         );
-      } catch (e) {}
+      } catch (_) {
+        // Ignore snackbar errors if widget unmounted
+      }
     }
   }
 

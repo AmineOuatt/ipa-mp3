@@ -1,4 +1,5 @@
-﻿import 'dart:convert';
+import 'dart:async';
+import 'dart:convert';
 import 'dart:io';
 import 'dart:math';
 import 'package:file_picker/file_picker.dart';
@@ -10,7 +11,6 @@ import 'package:google_fonts/google_fonts.dart';
 import 'package:audio_session/audio_session.dart';
 import 'package:just_audio/just_audio.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-import 'package:http/http.dart' as http;
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 
 import 'quran_browser.dart';
@@ -616,7 +616,6 @@ class _AudioLooperScreenState extends State<AudioLooperScreen> {
                     debugPrint("Error parsing library entry: $e");
                     return null;
                   }
-                  ;
                 })
                 .whereType<SavedAudioEntry>()
                 .toList();
@@ -638,7 +637,6 @@ class _AudioLooperScreenState extends State<AudioLooperScreen> {
                     debugPrint("Error parsing group entry: $e");
                     return null;
                   }
-                  ;
                 })
                 .whereType<AudioGroup>()
                 .toList();
@@ -784,18 +782,6 @@ class _AudioLooperScreenState extends State<AudioLooperScreen> {
     }
   }
 
-  String _formatFileSize(int bytes) {
-    if (bytes <= 0) return '0 B';
-    const units = ['B', 'KB', 'MB', 'GB'];
-    double size = bytes.toDouble();
-    int unit = 0;
-    while (size >= 1024 && unit < units.length - 1) {
-      size /= 1024;
-      unit++;
-    }
-    return '${size.toStringAsFixed(size < 10 && unit > 0 ? 1 : 0)} ${units[unit]}';
-  }
-
   IconData _getAudioStatusIcon(SavedAudioEntry entry) {
     // Streaming from network
     if (entry.path.startsWith('http://') || entry.path.startsWith('https://')) {
@@ -834,39 +820,6 @@ class _AudioLooperScreenState extends State<AudioLooperScreen> {
 
     // File not found
     return Colors.grey;
-  }
-
-  void _showAudioSize(SavedAudioEntry entry) async {
-    String message;
-    if (entry.path.startsWith('http://') || entry.path.startsWith('https://')) {
-      // Try to fetch size from server headers
-      try {
-        final response = await http
-            .head(Uri.parse(entry.path))
-            .timeout(const Duration(seconds: 5));
-        final contentLength = response.contentLength;
-        if (contentLength != null && contentLength > 0) {
-          message = 'Size: ${_formatFileSize(contentLength)}';
-        } else {
-          message = 'Size unavailable for streaming source.';
-        }
-      } catch (e) {
-        message = 'Size unavailable for streaming source.';
-      }
-    } else {
-      final file = File(entry.path);
-      if (!file.existsSync()) {
-        message = 'File not found on device.';
-      } else {
-        final bytes = file.lengthSync();
-        message = 'Size: ${_formatFileSize(bytes)}';
-      }
-    }
-
-    if (!mounted) return;
-    ScaffoldMessenger.of(
-      context,
-    ).showSnackBar(SnackBar(content: Text(message)));
   }
 
   void _openAudioSource(SavedAudioEntry entry) async {
@@ -1251,7 +1204,7 @@ class _AudioLooperScreenState extends State<AudioLooperScreen> {
                     Navigator.pop(context);
                   },
                 );
-              }).toList(),
+              }),
             ],
           ),
         ),
@@ -1652,7 +1605,7 @@ class _AudioLooperScreenState extends State<AudioLooperScreen> {
                       child: ListView.builder(
                         itemCount:
                             _audioGroups.length +
-                            (_library.where((e) => e.groupId == null).length > 0
+                            (_library.where((e) => e.groupId == null).isNotEmpty
                                 ? 1
                                 : 0),
                         itemBuilder: (context, index) {
@@ -2635,54 +2588,6 @@ class _AudioLooperScreenState extends State<AudioLooperScreen> {
       ),
     );
   }
-
-  Widget _buildSegmentRangeBar(LoopBookmark segment, bool isSelected) {
-    final totalMs = _duration.inMilliseconds;
-    final start = segment.start.inMilliseconds;
-    final end = segment.end.inMilliseconds;
-
-    double startRatio = 0.0;
-    double endRatio = 1.0;
-    if (totalMs > 0) {
-      startRatio = (start / totalMs).clamp(0.0, 1.0);
-      endRatio = (end / totalMs).clamp(startRatio, 1.0);
-    }
-
-    return LayoutBuilder(
-      builder: (context, constraints) {
-        final width = constraints.maxWidth;
-        final left = width * startRatio;
-        final right = width * endRatio;
-        final highlightWidth = (right - left).clamp(8.0, width);
-
-        return Container(
-          height: 8,
-          decoration: BoxDecoration(
-            color: const Color(0xFF2A2A2A),
-            borderRadius: BorderRadius.circular(99),
-          ),
-          child: Stack(
-            children: [
-              Positioned(
-                left: left,
-                top: 0,
-                bottom: 0,
-                width: highlightWidth,
-                child: Container(
-                  decoration: BoxDecoration(
-                    color: isSelected
-                        ? const Color(0xFF45D47F)
-                        : const Color(0xFF1DB954).withAlpha(180),
-                    borderRadius: BorderRadius.circular(99),
-                  ),
-                ),
-              ),
-            ],
-          ),
-        );
-      },
-    );
-  }
 }
 
 // --- WAVEFORM PAINTER ---
@@ -2782,8 +2687,8 @@ class _SegmentPlayerScreenState extends State<SegmentPlayerScreen> {
   late int _currentIndex;
 
   // Stream subscriptions to clean up
-  late var _positionSubscription;
-  late var _stateSubscription;
+  late final StreamSubscription<Duration> _positionSubscription;
+  late final StreamSubscription<PlayerState> _stateSubscription;
 
   LoopBookmark get currentSegment => widget.segments[_currentIndex];
 
@@ -3220,8 +3125,9 @@ class _SegmentPlayerScreenState extends State<SegmentPlayerScreen> {
                         if (tempEnd <= tempStart) {
                           tempStart =
                               tempEnd - Duration(milliseconds: minGapMs);
-                          if (tempStart < Duration.zero)
+                          if (tempStart < Duration.zero) {
                             tempStart = Duration.zero;
+                          }
                         }
                       });
                     },
