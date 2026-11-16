@@ -1,340 +1,268 @@
-# Architecture & Refactoring Plan: MP360 Audio Player
+# Mp360 Upgrade Plan: Refactoring & Feature Expansion
 
 ## 1. Baseline Metrics (Phase 0)
 
-Recorded before modifying any project code:
-
-- **Git Branch**: `refactor/structure-cleanup` (branched from clean `main`)
+Recorded on branch `feature/mp360-upgrade`:
+- **Git Branch**: `feature/mp360-upgrade`
 - **Flutter SDK**: `3.50.0` (Dart `3.14.0`)
-- **`flutter pub get`**: Exit code `0` (clean dependency resolution)
-- **`dart format --output=none --set-exit-if-changed .`**:
-  - Exit code `1`
-  - 4 files unformatted: `test_api.dart`, `test_arabic.dart`, `test_full_fetch.dart`, `test_merge.dart`
+- **`flutter pub get`**: Exit code `0`
+- **`dart format --output=none --set-exit-if-changed .`**: Exit code `0` (Clean, 24 files formatted)
 - **`flutter analyze`**:
   - Exit code `1`
-  - **24 issues total** (0 errors, 5 warnings, 19 infos):
-    - `lib/main.dart`: 4 warnings (`dead_code` at 619 & 641, `unused_element` `_showAudioSize` at 839, `unused_element` `_buildSegmentRangeBar` at 2639), 7 infos (`empty_statements`, `unnecessary_to_list_in_spreads`, `prefer_is_empty`, `deprecated_member_use`, `prefer_typing_uninitialized_variables`, `curly_braces_in_flow_control_structures`)
-    - `lib/quran_browser.dart`: 1 warning (`unnecessary_question_mark` at 117), 3 infos (`deprecated_member_use`, `curly_braces_in_flow_control_structures`, `empty_catches`)
-    - Root scratch files (`test_*.dart`): 7 infos (`avoid_print`)
+  - **16 issues total** (0 errors, 0 warnings, 16 informational):
+    - 8 `deprecated_member_use` infos on `package:flutter/material.dart` (Flutter 3.50 preview notices)
+    - 1 `deprecated_member_use` info on `onReorder` in `audio_looper_screen.dart:2028`
+    - 7 `avoid_print` infos in root scratch files (`test_*.dart`)
 - **`flutter test`**:
-  - Exit code `1` (1 test failed: `test/widget_test.dart` due to `LateInitializationError: Field 'appPlayer' has not been initialized`)
+  - Exit code `1` (1 test failed: `test/widget_test.dart` due to pre-existing `LateInitializationError: Field 'appPlayer' has not been initialized`)
 - **`flutter build apk --debug`**:
-  - Exit code `0` (`√ Built build\app\outputs\flutter-apk\app-debug.apk`)
+  - Exit code `0` (`√ Built build\app\outputs\flutter-apk\app-debug.apk` in 33.7s)
 
 ---
 
-## 2. Current Structure & Analysis
+## 2. Current Structure & Diagnosis
 
 ### 2.1 File Tree
-```
-lib/
-├── main.dart             (3,285 lines - Monolith: Models, AudioHandler, NotificationService, AudioLooperScreen, _WaveformPainter, SegmentPlayerScreen)
-└── quran_browser.dart    (667 lines   - Monolith: QuranBrowserMode, SurahSelectionScreen, API handling, Download logic)
-```
-
-### 2.2 Problems Found
-
-1. **Monolithic & Oversized Files**:
-   - `lib/main.dart` is **3,285 lines** containing 11 distinct classes, data models, audio service integration, local notification management, custom painters, and 2 full screens with hundreds of lines of inline bottom sheets and dialogs.
-   - `lib/quran_browser.dart` is **667 lines** mixing network API requests, download progress tracking, and UI dialogs.
-
-2. **Mixed Responsibilities**:
-   - `main.dart` handles:
-     - App bootstrap (`main()`, `runApp()`)
-     - Data models (`LoopBookmark`, `SavedAudioEntry`, `AudioGroup`) with JSON serialization
-     - Background audio handling (`AppAudioHandler` with `audio_service`)
-     - Notification management (`NotificationService` with `flutter_local_notifications`)
-     - Persistent storage (direct `SharedPreferences` reads/writes for library and groups)
-     - Audio file operations & picker integration (`file_picker`)
-     - Custom UI painting (`_WaveformPainter`)
-     - Main player screen (`AudioLooperScreen`)
-     - Segment looping player screen (`SegmentPlayerScreen`)
-
-3. **Duplicated Code**:
-   - `_formatDuration(Duration d)` is implemented identically in both `_AudioLooperScreenState` (`lib/main.dart:1972`) and `_SegmentPlayerScreenState` (`lib/main.dart:2869`).
-   - Redundant JSON parsing and fallback error-handling logic scattered across state methods.
-
-4. **Dead Code & Unused Declarations**:
-   - Unused private method `_showAudioSize()` in `lib/main.dart:839`.
-   - Unused private widget `_buildSegmentRangeBar()` in `lib/main.dart:2639`.
-   - Stray empty statements creating dead code branches in `lib/main.dart:619` and `641` (`};`).
-   - Unused nullable typing `dynamic?` in `lib/quran_browser.dart:117`.
-
-5. **Inconsistent Naming & Code Standards**:
-   - Private classes defined alongside public ones in the same file.
-   - Missing explicit type annotations on variables (`late var _positionSubscription` in `lib/main.dart:2785`).
-   - Missing curly braces on control flow (`if (tempStart < Duration.zero) tempStart = Duration.zero;` at `lib/main.dart:3224`).
-
-6. **Magic Numbers & Hardcoded Strings**:
-   - Color constants (`0xFF121212`, `0xFF1DB954`, `0xFF181818`, `0xFF282828`) hardcoded across UI components.
-   - SharedPreferences keys (`saved_audios_v2`, `audio_groups_v1`, `last_audio_path`) hardcoded in multiple methods.
-   - Notification IDs, channel IDs (`audio_playback`), and action identifiers (`play_pause`, `next_segment`, `prev_segment`, `stop`) scattered without centralized constants.
-
-7. **Missing `const` and Style Issues**:
-   - Hundreds of un-optimized widget constructors and `EdgeInsets` instances lacking `const`.
-
----
-
-## 3. Target Structure (Feature-First & Modular)
-
-Adapted strictly to what the app contains without unnecessary abstraction layers:
-
 ```
 lib/
 ├── core/
 │   ├── constants/
 │   │   ├── app_colors.dart            // Theme and UI color palette
 │   │   ├── pref_keys.dart             // SharedPreferences key strings
-│   │   └── audio_constants.dart       // Notification IDs, action keys, defaults
+│   │   └── audio_constants.dart       // Notification IDs and action keys
 │   ├── theme/
 │   │   └── app_theme.dart             // Centralized ThemeData definition
 │   └── utils/
 │       ├── duration_formatter.dart    // Reusable duration formatting utility
 │       └── file_size_formatter.dart   // Byte size formatting utility
-│
-├── models/
-│   ├── loop_bookmark.dart             // A-B loop segment model + serialization
-│   ├── saved_audio_entry.dart         // Saved audio library item model + serialization
-│   └── audio_group.dart               // Playlist group model + serialization
-│
-├── services/
-│   ├── audio_handler.dart             // AppAudioHandler (audio_service implementation)
-│   └── notification_service.dart      // Local notifications manager
-│
-├── features/
-│   ├── player/
-│   │   ├── presentation/
-│   │   │   ├── screens/
-│   │   │   │   ├── audio_looper_screen.dart   // Main player screen
-│   │   │   │   └── segment_player_screen.dart // Segment/loop repeater player screen
-│   │   │   └── widgets/
-│   │   │       ├── waveform_painter.dart      // Custom waveform canvas painter
-│   │   │       └── edit_segment_sheet.dart    // Bottom sheet for editing segment start/end
-│   ├── library/
-│   │   └── presentation/
-│   │       └── widgets/
-│   │           ├── library_panel.dart         // Saved audios & groups bottom sheet
-│   │           └── group_dialogs.dart         // Create/rename/delete/move group dialogs
-│   └── quran/
-│       └── presentation/
-│           └── screens/
-│               ├── quran_browser_screen.dart  // Reciter list & search screen
-│               └── surah_selection_screen.dart// Surah browser & download screen
-│
-└── main.dart                          // App bootstrap, global player binding, AudioRepeaterApp
-```
-
----
-
-## 4. Step-by-Step Execution Plan
-
-Each step is independent, behavior-preserving, verifiable, and committed individually.
-
-### Step 1: Formatting & Cleaning Dead Code - [x] Done (Commit `3ff5028`)
-- **Files Affected**: `lib/main.dart`, `lib/quran_browser.dart`, `test_*.dart`
-- **Changes**:
-  - Removed stray semicolons causing unreachable code and empty statements at `lib/main.dart:619, 641`.
-  - Removed unused private methods `_showAudioSize` and `_buildSegmentRangeBar`.
-  - Removed unused `http` import and `_formatFileSize` from `main.dart`.
-  - Fixed `dynamic?` to `dynamic` in `lib/quran_browser.dart:117`.
-  - Added curly braces to control flow statements in `lib/main.dart` and `lib/quran_browser.dart`.
-  - Explicitly typed `_positionSubscription` and `_stateSubscription`.
-  - Formatted all Dart files with `dart format .`.
-- **Result**: `flutter analyze` compiler warnings in `lib/` dropped to 0! `flutter build apk --debug` succeeded in 50.6s.
-
-### Step 2: Extract Core Constants & Utilities - [x] Done (Commit `a243baa`)
-- **Files Affected**:
-  - Created: `lib/core/constants/app_colors.dart`, `lib/core/constants/pref_keys.dart`, `lib/core/constants/audio_constants.dart`
-  - Created: `lib/core/utils/duration_formatter.dart`, `lib/core/utils/file_size_formatter.dart`
-  - Created: `lib/core/theme/app_theme.dart`
-  - Updated: `lib/main.dart`
-- **Changes**:
-  - Extracted color palette into `AppColors` and centralized `ThemeData` into `AppTheme`.
-  - Extracted persistent preferences keys into `PrefKeys` and audio notification constants into `AudioConstants`.
-  - Extracted duration formatters (`formatDuration`, `formatDurationWithMs`) and byte formatter (`formatFileSize`).
-- **Result**: `flutter analyze` clean with 0 warnings; `flutter build apk --debug` succeeded in 55.8s.
-
-### Step 3: Extract Data Models - [x] Done (Commit `603954b`)
-- **Files Affected**:
-  - Created: `lib/models/loop_bookmark.dart`, `lib/models/saved_audio_entry.dart`, `lib/models/audio_group.dart`, `lib/models/models.dart`
-  - Updated: `lib/main.dart`
-- **Changes**:
-  - Moved `LoopBookmark`, `SavedAudioEntry`, and `AudioGroup` into standalone files under `lib/models/`.
-  - Exported through `lib/models/models.dart` and imported into `lib/main.dart`.
-  - Retained exact JSON keys and serialization contracts.
-- **Result**: `flutter analyze` clean with 0 warnings; `flutter build apk --debug` succeeded in 43.6s.
-
-### Step 4: Extract Audio & Notification Services - [x] Done (Commit `9d73ed2`)
-- **Files Affected**:
-  - Created: `lib/services/audio_handler.dart`, `lib/services/notification_service.dart`
-  - Updated: `lib/main.dart`
-- **Changes**:
-  - Extracted `AppAudioHandler` to `lib/services/audio_handler.dart`.
-  - Extracted `NotificationService` to `lib/services/notification_service.dart`.
-  - Connected constants from `audio_constants.dart`.
-  - Removed unused notification import from `main.dart`.
-- **Result**: `flutter analyze` clean with 0 warnings; `flutter build apk --debug` succeeded in 42.3s.
-
-### Step 5: Extract Quran Browser Feature Screens - [x] Done (Commit `f9fe133`)
-- **Files Affected**:
-  - Created: `lib/features/quran/presentation/screens/quran_browser_screen.dart`
-  - Created: `lib/features/quran/presentation/screens/surah_selection_screen.dart`
-  - Updated: `lib/quran_browser.dart` (clean re-export forwarding file)
-- **Changes**:
-  - Separated `QuranBrowserMode` and `SurahSelectionScreen` into dedicated feature files under `lib/features/quran/`.
-  - Preserved exact API endpoints, reciter search, and download logic.
-  - Linked `AppColors` for clean consistent styling.
-- **Result**: `flutter analyze` clean with 0 warnings; `flutter build apk --debug` succeeded in 42.2s.
-
-### Step 6: Extract Waveform Painter & Segment Player - [x] Done (Commit `af1617a`)
-- **Files Affected**:
-  - Created: `lib/features/player/presentation/widgets/waveform_painter.dart`
-  - Created: `lib/features/player/presentation/screens/segment_player_screen.dart`
-  - Updated: `lib/main.dart`
-- **Changes**:
-  - Moved `WaveformPainter` into `lib/features/player/presentation/widgets/`.
-  - Moved `SegmentPlayerScreen` and `_SegmentPlayerScreenState` into `lib/features/player/presentation/screens/`.
-  - Connected `AppColors` and utility duration formatters.
-- **Result**: `flutter analyze` clean with 0 warnings; `flutter build apk --debug` succeeded in 40.9s.
-
-### Step 7 & 8: Move Main Player Screen & Slim `main.dart` - [x] Done (Commit `d08eda9`)
-- **Files Affected**:
-  - Created: `lib/features/player/presentation/screens/audio_looper_screen.dart`
-  - Updated: `lib/main.dart` (slimming from 2,266 lines to 52 lines)
-  - Updated: `lib/services/audio_handler.dart`
-- **Changes**:
-  - Moved `AudioLooperScreen` and `_AudioLooperScreenState` into its dedicated feature folder.
-  - Refactored `lib/main.dart` to contain only app initialization, global audio player setup, and `AudioRepeaterApp`.
-  - Re-exported `appPlayer` and `appAudioHandler` for 100% backwards compatibility with widget tests.
-- **Result**: `flutter analyze` clean with 0 warnings; `flutter build apk --debug` succeeded in 42.6s.
-
-### Step 9: Lint Polish & Final Const Optimization - [x] Done
-- **Files Affected**: All files in `lib/` and root Dart files
-- **Changes**:
-  - Removed unused imports across `lib/` files.
-  - Formatted all Dart files across the workspace using `dart format .`.
-  - Ran static analysis, test suite, and debug APK build verification.
-- **Result**: `flutter analyze` compiler warnings in `lib/` dropped from 5 to 0; APK built in 41.2s.
-
----
-
-## 8. Final Report
-
-### 8.1 Summary of Changes
-- **Monolith Elimination**: `lib/main.dart` was reduced from **3,285 lines** to **52 lines**.
-- **Feature-First Architecture**: Extracted code into clean domain, service, core, and feature directories without modifying any state management or application logic.
-- **Dead Code & Compiler Warnings**: Removed dead code branches, stray empty statements (`lib/main.dart:619, 641`), and unreferenced private functions (`_showAudioSize`, `_buildSegmentRangeBar`).
-- **Zero Behavioral Changes**: All public signatures, serialization keys, persistence formats, audio player controls, background services, and notification actions remain 100% identical and functioning.
-
-### 8.2 Before vs. After Structure
-
-#### Before:
-```
-lib/
-├── main.dart             (3,285 lines - Monolith combining models, services, screens, painters)
-└── quran_browser.dart    (667 lines   - Monolith combining screens, downloads, API)
-```
-
-#### After:
-```
-lib/
-├── core/
-│   ├── constants/
-│   │   ├── app_colors.dart            // Centralized color palette
-│   │   ├── pref_keys.dart             // SharedPreferences key constants
-│   │   └── audio_constants.dart       // Notification IDs and playback action identifiers
-│   ├── theme/
-│   │   └── app_theme.dart             // Clean ThemeData definition
-│   └── utils/
-│       ├── duration_formatter.dart    // Reusable duration formatting functions
-│       └── file_size_formatter.dart   // Byte size formatting
 ├── models/
 │   ├── audio_group.dart               // AudioGroup playlist model + serialization
 │   ├── loop_bookmark.dart             // LoopBookmark segment model + serialization
-│   ├── models.dart                    // Convenient barrel export
+│   ├── models.dart                    // Barrel export
 │   └── saved_audio_entry.dart         // SavedAudioEntry model + serialization
 ├── services/
 │   ├── audio_handler.dart             // AppAudioHandler (audio_service) + global bindings
-│   └── notification_service.dart      // NotificationService (flutter_local_notifications)
+│   └── notification_service.dart      // Local notifications manager
 ├── features/
 │   ├── player/
 │   │   └── presentation/
 │   │       ├── screens/
-│   │       │   ├── audio_looper_screen.dart   // Main player screen
+│   │       │   ├── audio_looper_screen.dart   // Main player screen (~2,100 lines)
 │   │       │   └── segment_player_screen.dart // Dedicated segment repeater screen
 │   │       └── widgets/
 │   │           └── waveform_painter.dart      // Custom canvas waveform painter
 │   └── quran/
 │       └── presentation/
 │           └── screens/
-│               ├── quran_browser_screen.dart  // Reciter list and search screen
-│               └── surah_selection_screen.dart// Surah browser and download screen
+│               ├── quran_browser_screen.dart  // Reciter list & search screen
+│               └── surah_selection_screen.dart// Surah browser & download screen
 ├── quran_browser.dart                 // Backward-compatible re-export file
 └── main.dart                          // App bootstrap (52 lines)
 ```
 
-### 8.3 Analyze / Test Results vs. Baseline
-
-| Metric | Baseline | Post-Refactor | Status |
-| :--- | :--- | :--- | :--- |
-| **`dart format`** | 4 unformatted files | Clean (0 unformatted files) | Improved |
-| **`flutter analyze` (Warnings in `lib/`)** | 5 warnings | **0 warnings** | Improved |
-| **`flutter analyze` (Infos in `lib/`)** | 12 infos | 1 info (`onReorder` deprecated in Flutter 3.41+) | Improved |
-| **`flutter test`** | 1 failed (`test/widget_test.dart`) | 1 failed (identical baseline error) | Unchanged (Preserved) |
-| **`flutter build apk --debug`** | Succeeded (353.1s) | **Succeeded (41.2s)** | Validated |
-
-### 8.4 Observed Issues (Not Fixed - Preserved per Constraints)
-1. **`test/widget_test.dart` initialization**: The test fails because `appPlayer` is a `late final AudioPlayer` initialized inside `main()` rather than being mockable or injected. Preserved without fixing.
-2. **Scratch scripts in project root**: `test_api.dart`, `test_arabic.dart`, `test_full_fetch.dart`, `test_merge.dart` reside in root and trigger `avoid_print` lints. Preserved without fixing.
-3. **Deprecated `onReorder` in `audio_looper_screen.dart:2028`**: Uses `onReorder` instead of `onReorderItem`. Preserved to avoid changing reorder behavior.
-4. **Synchronous File I/O on UI thread**: Several `File(path).existsSync()` calls occur synchronously during UI rebuilds. Preserved as-is.
-
-### 8.5 Recommended Next Steps (Future Work)
-1. **Dependency Injection for Player**: Wrap `AudioPlayer` and `NotificationService` with a Provider / Riverpod / InheritedWidget so `widget_test.dart` can supply a mock or test instance cleanly.
-2. **Delete or Relocate Root Scratch Files**: Move `test_*.dart` from root to a `scripts/` or `tool/` directory, or convert them into standard integration tests.
-3. **Migrate `onReorder`**: Update `ReorderableListView` callback to `onReorderItem` when upgrading targeting modern Flutter versions.
+### 2.2 Problems Found
+1. **Oversized Screen File**: `lib/features/player/presentation/screens/audio_looper_screen.dart` is still ~2,100 lines and contains inline library panel bottom sheets, group creation dialogs, and large audio playback controls.
+2. **Hardcoded User-Facing Strings**: All UI text is hardcoded in English across screens with zero localization infrastructure.
+3. **Android Background Playback Defect (B1 Root Cause)**:
+   - In `services/audio_handler.dart` and `main.dart`, `AudioService.init()` was conditionally called **ONLY for iOS** (`if (useIosMediaControls)` where `useIosMediaControls => !kIsWeb && Platform.isIOS`). On Android, `appAudioHandler` was set to `null` and a raw unmanaged `AudioPlayer()` was used.
+   - `android/app/src/main/AndroidManifest.xml` lacked required foreground service permissions (`FOREGROUND_SERVICE`, `FOREGROUND_SERVICE_MEDIA_PLAYBACK`, `WAKE_LOCK`, `POST_NOTIFICATIONS`) and lacked the `com.ryanheise.audioservice.AudioService` service declaration with `foregroundServiceType="mediaPlayback"`.
+   - Without an Android foreground service, Android's Low Memory Killer (LMK) terminates the app within minutes when backgrounded or when the screen is locked.
 
 ---
 
-## 5. Verification Checklist
+## 3. Target Feature-First Architecture
 
-1. **Static Analysis**: `flutter analyze` has 0 errors and zero new warnings compared to baseline.
-2. **Formatting**: `dart format --output=none --set-exit-if-changed .` passes cleanly on all `lib/` files.
-3. **App Build**: `flutter build apk --debug` succeeds without errors.
-4. **Manual Smoke Test Suite**:
-   - [ ] **Audio Playback**: Load local file or online stream -> Play / Pause / Seek.
-   - [ ] **Playback Speed**: Toggle speeds (0.5x, 0.75x, 1.0x, 1.25x, 1.5x, 2.0x).
-   - [ ] **A-B Looping**: Set Point A, Set Point B -> audio loops between A and B accurately.
-   - [ ] **Segment Management**: Save segment -> segment appears in list -> edit label -> delete segment.
-   - [ ] **Segment Player**: Tap segment -> opens Segment Player -> plays sequence / loops segment -> edit segment start/end.
-   - [ ] **Library & Groups**: Open library panel -> create new group -> move track to group -> expand/collapse group.
-   - [ ] **Quran Browser**: Open online browser -> search reciter (Arabic & English) -> select Surah -> stream or download.
-   - [ ] **Persistence**: Restart app -> library items and bookmarks persist correctly.
-   - [ ] **Notifications & Background**: Background playback continues -> notification controls respond.
+```
+lib/
+├── core/
+│   ├── constants/
+│   │   ├── app_colors.dart
+│   │   ├── pref_keys.dart
+│   │   └── audio_constants.dart
+│   ├── theme/
+│   │   └── app_theme.dart
+│   ├── utils/
+│   │   ├── duration_formatter.dart
+│   │   └── file_size_formatter.dart
+│   └── l10n/
+│       ├── app_en.arb
+│       ├── app_ar.arb
+│       └── l10n.dart
+├── models/
+│   ├── audio_group.dart
+│   ├── loop_bookmark.dart
+│   ├── saved_audio_entry.dart
+│   ├── download_task.dart             // Download task model for B4, B5, B6
+│   └── models.dart
+├── services/
+│   ├── audio_handler.dart             // Full Android & iOS AudioService
+│   ├── notification_service.dart
+│   ├── download_service.dart          // YouTube & playlist download orchestrator
+│   └── widget_service.dart            // Home screen widget updater
+├── features/
+│   ├── player/
+│   │   ├── presentation/
+│   │   │   ├── screens/
+│   │   │   │   ├── audio_looper_screen.dart
+│   │   │   │   └── segment_player_screen.dart
+│   │   │   └── widgets/
+│   │   │       ├── waveform_painter.dart
+│   │   │       └── player_controls.dart
+│   ├── library/
+│   │   └── presentation/
+│   │       └── widgets/
+│   │           ├── library_panel.dart
+│   │           └── group_dialogs.dart
+│   ├── quran/
+│   │   └── presentation/
+│   │       └── screens/
+│   │           ├── quran_browser_screen.dart
+│   │           └── surah_selection_screen.dart
+│   ├── downloads/
+│   │   └── presentation/
+│   │       ├── screens/
+│   │       │   └── youtube_download_screen.dart
+│   │       └── widgets/
+│   │           └── download_progress_sheet.dart
+│   ├── settings/
+│   │   └── presentation/
+│   │       └── screens/
+│   │           └── settings_screen.dart
+│   └── about/
+│       └── presentation/
+│           └── screens/
+│               └── about_screen.dart
+├── shared/
+│   └── widgets/
+│       └── app_text_field.dart
+├── quran_browser.dart
+└── main.dart
+```
 
 ---
 
-## 6. Rollback Strategy
+## 4. Dependencies Justification Table (Phase B)
 
-- All work is isolated on git branch `refactor/structure-cleanup`.
-- Exactly **one git commit per step**.
-- If any step fails verification or introduces a regression, it will be reverted cleanly with `git revert HEAD` or reset before proceeding.
+| Dependency | Purpose / Why Needed | Maintenance Status |
+| :--- | :--- | :--- |
+| `flutter_localizations` (SDK) | Official Flutter localization support for English & Arabic ARB | Official Flutter SDK |
+| `intl: ^0.19.0` | Number/date formatting, RTL bidirectionality, and ARB message lookup | Active (Dart official) |
+| `package_info_plus: ^8.1.2` | Read real app version & build number for the About screen | Active (fluttercommunity) |
+| `home_widget: ^0.7.0` | Bridge Flutter audio state to Android AppWidgetProvider | Active |
+| `youtube_explode_dart: ^2.2.1` | Fetch YouTube video/playlist metadata and stream audio without external binaries | Active |
 
 ---
 
-## 7. Observed Issues (Not Fixed - Preserved per Constraints)
+## 5. Ordered Execution Plan
 
-1. **`test/widget_test.dart` Failure**:
-   - `test/widget_test.dart` pumps `AudioRepeaterApp` without initializing `appPlayer`, which is a `late final AudioPlayer` created inside `main()`. This throws `LateInitializationError: Field 'appPlayer' has not been initialized.` at test runtime.
-   - Preserved without fixing as per strict non-regression / no logic rewrite rule.
-2. **Root Scratch Scripts**:
-   - `test_api.dart`, `test_arabic.dart`, `test_full_fetch.dart`, `test_merge.dart` reside directly in root, contain `avoid_print` lint warnings, and are not hooked into `flutter test`.
-   - Left untouched outside `lib/`.
-3. **Deprecated Flutter API Usage**:
-   - `onReorder` in `lib/main.dart:2468` is deprecated in Flutter 3.41+ in favor of `onReorderItem`.
-   - Left intact to avoid touching reorder behavior.
-4. **Untyped API Maps in `quran_browser.dart`**:
-   - The online browser uses `dynamic` maps instead of strict data classes. Preserved as-is to guarantee zero behavioral divergence.
-5. **Direct File System Operations in UI Thread**:
-   - `File(entry.path).existsSync()` and `File(path).lengthSync()` called synchronously on the UI thread in state methods. Preserved as-is.
+### PHASE A - Refactor (No Behavior Changes)
 
+#### A1. Format, Remove Unused Imports & Dead Code
+- **Goal**: Ensure zero dead imports, clean formatting across all Dart files.
+- **Files**: All `lib/` files.
+- **Verification**: `dart format --output=none --set-exit-if-changed .` passes; `flutter analyze` clean.
+
+#### A2. Naming Conventions & Import Organization
+- **Goal**: Organize imports alphabetically and group by Dart, packages, and local modules.
+- **Files**: `lib/main.dart`, `lib/services/*.dart`, `lib/features/**/*.dart`.
+- **Verification**: `flutter analyze` clean.
+
+#### A3. Extract Constants, Strings & Theme Values
+- **Goal**: Consolidate remaining hardcoded color literals and dimension metrics into `AppColors`.
+- **Files**: `lib/features/player/presentation/screens/audio_looper_screen.dart`, `lib/core/constants/app_colors.dart`.
+- **Verification**: `flutter analyze` clean; UI colors unchanged.
+
+#### A4. Split Large Files & Widgets
+- **Goal**: Extract `library_panel.dart` and `group_dialogs.dart` from `audio_looper_screen.dart` to bring file size below 1,000 lines.
+- **Files**:
+  - Create: `lib/features/library/presentation/widgets/library_panel.dart`
+  - Create: `lib/features/library/presentation/widgets/group_dialogs.dart`
+  - Update: `lib/features/player/presentation/screens/audio_looper_screen.dart`
+- **Verification**: `flutter analyze` clean; open library sheet and dialogs; verify playlists and folder grouping work identically.
+
+#### A5. Move Files into Target Feature Structure
+- **Goal**: Establish the `features/library`, `features/settings`, and `shared/` directories.
+- **Files**: Reorganize shared files and update imports.
+- **Verification**: `flutter analyze` 0 warnings; `flutter build apk --debug` succeeds.
+
+---
+
+### PHASE B - Features (One Step Per Feature, Atomic Commits)
+
+#### B1. Fix Android Background Playback Being Killed
+- **Root Cause**:
+  1. `AudioService.init()` was called exclusively on iOS in `main.dart`; on Android, `appAudioHandler` was null and only a raw `AudioPlayer` was used without an Android foreground service.
+  2. `AndroidManifest.xml` lacked `FOREGROUND_SERVICE`, `FOREGROUND_SERVICE_MEDIA_PLAYBACK`, `WAKE_LOCK`, `POST_NOTIFICATIONS` permissions.
+  3. `AndroidManifest.xml` lacked the `com.ryanheise.audioservice.AudioService` service declaration and `MediaButtonReceiver`.
+- **Changes**:
+  1. Update `lib/main.dart` to initialize `AudioService.init(builder: () => AppAudioHandler(player))` uniformly on both Android and iOS.
+  2. Configure `AudioSession` for music playback, audio focus handling, and becoming-noisy events (pause on headphone unplug).
+  3. Update `android/app/src/main/AndroidManifest.xml` with required service declarations and permissions.
+  4. Ensure `AppAudioHandler` broadcasts continuous playback state and media items so Android holds a persistent media notification.
+  5. Add an optional helper prompt in settings guiding the user to disable Android battery optimization.
+- **Verification**: Run `flutter build apk --debug`; verify persistent media notification on Android; test background audio continues playing with screen off.
+
+#### B2. Arabic/English Language Switch + About Button
+- **Changes**:
+  1. Add `flutter_localizations` and `intl` to `pubspec.yaml`, create `l10n.yaml`.
+  2. Create `lib/core/l10n/app_en.arb` and `lib/core/l10n/app_ar.arb` with all strings.
+  3. Wire dynamic `Locale` switching in `AudioRepeaterApp` backed by `SharedPreferences` (persists across launches, changes instantly without restart).
+  4. Implement full RTL awareness (`Directionality.of(context)`).
+  5. Add Settings / Language dialog and an About screen showing app name, version (`package_info_plus`), description, developer contact, and license info.
+- **Verification**: Toggle between English and Arabic; verify UI flips RTL properly with correct Arabic typography and strings; open About screen.
+
+#### B3. Android Home Screen Widget
+- **Changes**:
+  1. Add `home_widget` dependency.
+  2. Create native Android AppWidget layout (`res/layout/widget_layout.xml`), widget provider info (`res/xml/widget_info.xml`), and Kotlin `AppWidgetProvider`.
+  3. Register widget receiver in `AndroidManifest.xml`.
+  4. Create `WidgetService` in Flutter that updates widget title, reciter/artist, and play/pause icon on playback state changes.
+  5. Connect widget button click actions (play/pause, next, prev) to `AppAudioHandler`.
+- **Verification**: Add widget to Android emulator home screen; verify track info updates and buttons control playback.
+
+#### B4. Download Audio from YouTube URL Inside the App
+- **Changes**:
+  1. Add `youtube_explode_dart` dependency.
+  2. Create `lib/features/downloads/presentation/screens/youtube_download_screen.dart`.
+  3. Provide URL text field with clipboard paste button, URL validation, and metadata preview (title, author, duration, thumbnail).
+  4. Fetch audio-only stream (prefer highest bitrate m4a/webm), stream download to app documents folder, and insert entry into `_library` with proper naming and group.
+  5. Handle network errors, age-restricted videos, and invalid URLs gracefully with snackbars and retry actions.
+- **Verification**: Paste YouTube link; verify video preview loads; download audio; verify track appears in library and plays smoothly.
+
+#### B5. Download Entire Playlist as a New Folder
+- **Changes**:
+  1. Add playlist URL parsing and metadata extraction via `youtube_explode_dart`.
+  2. Dialog allowing user to name the target folder (defaults to playlist title, sanitized of illegal filename characters).
+  3. Queue all playlist tracks, skip existing files, and download with concurrency throttle (2-3 simultaneous downloads).
+  4. Create `AudioGroup` in `SharedPreferences` for the folder and assign all downloaded tracks to `groupId`.
+  5. Provide summary report upon completion (X succeeded, Y failed with retry button).
+- **Verification**: Provide YouTube playlist URL; verify folder creation; check sequential/parallel downloads and folder appearance in library.
+
+#### B6. Download Progress UI
+- **Changes**:
+  1. Implement `DownloadTask` model and `DownloadService` with reactive progress streams.
+  2. Build in-app progress bottom sheet / panel displaying active downloads, per-track percent bar, overall playlist count (e.g., 3/15), and cancel/pause buttons.
+  3. Show Android ongoing notification with download progress bar for background downloads.
+  4. Maintain progress state in `DownloadService` singleton so it survives orientation changes and screen navigation.
+- **Verification**: Start multi-track download; verify progress bar updates smoothly in app and in Android notification; rotate screen and navigate away; verify completion.
+
+---
+
+## 6. Verification Checklist & Rollback Strategy
+
+### Verification per Step:
+1. `dart format --output=none --set-exit-if-changed .` passes.
+2. `flutter analyze` produces 0 errors and 0 new warnings.
+3. `flutter test` baseline status preserved.
+4. `flutter build apk --debug` succeeds.
+
+### Rollback Strategy:
+- Each sub-step has its own atomic git commit.
+- If any check fails or introduces regressions, run `git revert HEAD` or reset to the previous commit.
+
+---
+
+## 7. Observed Issues (Preserved per Constraints)
+1. **`test/widget_test.dart` Failure**: Fails because `appPlayer` is initialized in async `main()` rather than being injected into `AudioRepeaterApp`. Preserved without unrequested test rewrite.
+2. **Scratch Scripts in Root**: `test_api.dart`, `test_arabic.dart`, `test_full_fetch.dart`, `test_merge.dart` contain `avoid_print` warnings. Left untouched.
+3. **Deprecated `onReorder`**: `ReorderableListView` in `audio_looper_screen.dart` uses `onReorder`.
