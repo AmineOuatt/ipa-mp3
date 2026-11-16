@@ -13,100 +13,10 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 
 import 'core/theme/app_theme.dart';
+import 'models/models.dart';
 import 'quran_browser.dart';
 
-// --- DATA MODELS ---
-
-class LoopBookmark {
-  final String id;
-  String name;
-  Duration start;
-  Duration end;
-
-  LoopBookmark({
-    required this.id,
-    required this.name,
-    required this.start,
-    required this.end,
-  });
-
-  Map<String, dynamic> toJson() => {
-    'id': id,
-    'name': name,
-    'start': start.inMilliseconds,
-    'end': end.inMilliseconds,
-  };
-
-  factory LoopBookmark.fromJson(Map<String, dynamic> json) => LoopBookmark(
-    id: json['id'],
-    name: json['name'],
-    start: Duration(milliseconds: json['start']),
-    end: Duration(milliseconds: json['end']),
-  );
-}
-
-class SavedAudioEntry {
-  final String path;
-  String name;
-  List<LoopBookmark> segments;
-  String? groupId;
-  String? sourceReciterName;
-  String? sourceSurahName;
-  String? sourceSurahId;
-
-  SavedAudioEntry({
-    required this.path,
-    required this.name,
-    List<LoopBookmark>? segments,
-    this.groupId,
-    this.sourceReciterName,
-    this.sourceSurahName,
-    this.sourceSurahId,
-  }) : segments = segments ?? [];
-
-  Map<String, dynamic> toJson() => {
-    'path': path,
-    'name': name,
-    'segments': segments.map((s) => s.toJson()).toList(),
-    'groupId': groupId,
-    'sourceReciterName': sourceReciterName,
-    'sourceSurahName': sourceSurahName,
-    'sourceSurahId': sourceSurahId,
-  };
-
-  factory SavedAudioEntry.fromJson(Map<String, dynamic> json) =>
-      SavedAudioEntry(
-        path: json['path'],
-        name: json['name'],
-        segments: (json['segments'] as List)
-            .map((s) => LoopBookmark.fromJson(s as Map<String, dynamic>))
-            .toList(),
-        groupId: json['groupId'],
-        sourceReciterName: json['sourceReciterName'],
-        sourceSurahName: json['sourceSurahName'],
-        sourceSurahId: json['sourceSurahId'],
-      );
-}
-
-class AudioGroup {
-  final String id;
-  String name;
-  bool isExpanded;
-
-  AudioGroup({required this.id, required this.name, this.isExpanded = true});
-
-  Map<String, dynamic> toJson() => {
-    'id': id,
-    'name': name,
-    'isExpanded': isExpanded,
-  };
-
-  factory AudioGroup.fromJson(Map<String, dynamic> json) => AudioGroup(
-    id: json['id'],
-    name: json['name'],
-    isExpanded: json['isExpanded'] ?? true,
-  );
-}
+// --- BACKGROUND AUDIO HANDLER ---
 
 class AppAudioHandler extends BaseAudioHandler with SeekHandler {
   final AudioPlayer _player;

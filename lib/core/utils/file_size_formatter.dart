@@ -9,4 +9,3 @@ String formatFileSize(int bytes) {
   }
   return '${size.toStringAsFixed(size < 10 && unit > 0 ? 1 : 0)} ${units[unit]}';
 }
-

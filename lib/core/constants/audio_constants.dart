@@ -8,4 +8,3 @@ class AudioConstants {
   static const String actionNextSegment = 'next_segment';
   static const String actionStop = 'stop';
 }
-

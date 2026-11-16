@@ -4,4 +4,3 @@ class PrefKeys {
   static const String lastAudioPath = 'last_audio_path';
   static const String favoriteReciters = 'favorite_reciters';
 }
-

@@ -9,4 +9,3 @@ class AppColors {
   static const Color primaryLight = Color(0xFF1ED760);
   static const Color accentGreen = Color(0xFF45D47F);
 }
-
