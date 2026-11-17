@@ -13,8 +13,10 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import '../../../../models/models.dart';
 import '../../../../services/audio_handler.dart';
+import '../../../../services/download_service.dart';
 import '../../../../services/notification_service.dart';
 import '../../../../core/l10n/generated/app_localizations.dart';
+import '../../../downloads/presentation/screens/youtube_download_screen.dart';
 import '../../../library/presentation/widgets/group_dialogs.dart';
 import '../../../library/presentation/widgets/library_panel.dart';
 import '../../../quran/presentation/screens/quran_browser_screen.dart';
@@ -62,6 +64,28 @@ class _AudioLooperScreenState extends State<AudioLooperScreen> {
   Future<void> _initApp() async {
     _prefs = await SharedPreferences.getInstance();
     _loadLibrary();
+
+    DownloadService.instance.onAudioDownloaded = (entry) {
+      if (!mounted) return;
+      setState(() {
+        final existing = _library.indexWhere((e) => e.path == entry.path);
+        if (existing == -1) {
+          _library.add(entry);
+        }
+      });
+      _saveLibrary();
+    };
+
+    DownloadService.instance.onGroupCreated = (group) {
+      if (!mounted) return;
+      setState(() {
+        final existing = _audioGroups.indexWhere((g) => g.id == group.id);
+        if (existing == -1) {
+          _audioGroups.add(group);
+        }
+      });
+      _saveLibrary();
+    };
 
     if (_supportsLocalPlaybackNotification) {
       NotificationService().setActionCallback(_handleNotificationAction);
@@ -1029,6 +1053,21 @@ class _AudioLooperScreenState extends State<AudioLooperScreen> {
           onPressed: _openLibraryPanel,
         ),
         actions: [
+          IconButton(
+            tooltip: "YouTube Downloader",
+            icon: const Icon(
+              Icons.cloud_download_rounded,
+              color: Color(0xFF1DB954),
+            ),
+            onPressed: () {
+              Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (_) => const YoutubeDownloadScreen(),
+                ),
+              );
+            },
+          ),
           IconButton(
             tooltip: "Browse Quran API",
             icon: const Icon(Icons.cloud_outlined, color: Colors.white),

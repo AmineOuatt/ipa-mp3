@@ -4,6 +4,7 @@ import '../../../../core/constants/app_colors.dart';
 import '../../../../core/l10n/generated/app_localizations.dart';
 import '../../../../main.dart';
 import '../../../about/presentation/screens/about_screen.dart';
+import '../../../downloads/presentation/screens/youtube_download_screen.dart';
 
 class SettingsScreen extends StatefulWidget {
   const SettingsScreen({super.key});
@@ -144,6 +145,37 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   ),
                 ),
               ],
+            ),
+          ),
+          const SizedBox(height: 20),
+          _buildSectionHeader('Downloads'),
+          Container(
+            decoration: BoxDecoration(
+              color: AppColors.cardBackground,
+              borderRadius: BorderRadius.circular(12),
+            ),
+            child: ListTile(
+              leading: const Icon(
+                Icons.cloud_download_rounded,
+                color: AppColors.primaryGreen,
+              ),
+              title: Text(
+                l10n?.youtubeDownload ?? 'YouTube Audio Download',
+                style: const TextStyle(color: Colors.white),
+              ),
+              subtitle: Text(
+                l10n?.downloadPlaylist ?? 'Download tracks and full playlists',
+                style: const TextStyle(color: Colors.grey, fontSize: 12),
+              ),
+              trailing: const Icon(Icons.chevron_right, color: Colors.grey),
+              onTap: () {
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (_) => const YoutubeDownloadScreen(),
+                  ),
+                );
+              },
             ),
           ),
           const SizedBox(height: 20),

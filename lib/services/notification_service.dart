@@ -120,6 +120,43 @@ class NotificationService {
     await _plugin.cancel(notificationId);
   }
 
+  static const int downloadNotificationId = 2001;
+
+  Future<void> showDownloadNotification({
+    required String title,
+    required String subtitle,
+    int? progress,
+    int? maxProgress,
+  }) async {
+    final androidDetails = AndroidNotificationDetails(
+      channelId,
+      channelName,
+      importance: Importance.low,
+      priority: Priority.low,
+      showProgress: progress != null,
+      maxProgress: maxProgress ?? 100,
+      progress: progress ?? 0,
+      playSound: false,
+      ongoing: progress != null && progress < (maxProgress ?? 100),
+    );
+
+    final NotificationDetails details = NotificationDetails(
+      android: androidDetails,
+      iOS: DarwinNotificationDetails(
+        presentAlert: false,
+        presentBadge: false,
+        presentSound: false,
+        subtitle: subtitle,
+      ),
+    );
+
+    await _plugin.show(downloadNotificationId, title, subtitle, details);
+  }
+
+  Future<void> cancelDownloadNotification() async {
+    await _plugin.cancel(downloadNotificationId);
+  }
+
   void _onNotificationResponse(NotificationResponse response) {
     final actionId = response.actionId;
     if (actionId != null && actionId.isNotEmpty && _actionCallback != null) {
