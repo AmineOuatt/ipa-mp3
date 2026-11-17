@@ -8,4 +8,8 @@ class AppColors {
   static const Color primary = Color(0xFF1DB954);
   static const Color primaryLight = Color(0xFF1ED760);
   static const Color accentGreen = Color(0xFF45D47F);
+
+  // Aliases for readability
+  static const Color cardBackground = surface;
+  static const Color primaryGreen = primary;
 }

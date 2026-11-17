@@ -14,6 +14,8 @@ import 'package:shared_preferences/shared_preferences.dart';
 import '../../../../models/models.dart';
 import '../../../../services/audio_handler.dart';
 import '../../../../services/notification_service.dart';
+import '../../../library/presentation/widgets/group_dialogs.dart';
+import '../../../library/presentation/widgets/library_panel.dart';
 import '../../../quran/presentation/screens/quran_browser_screen.dart';
 import '../widgets/waveform_painter.dart';
 import 'segment_player_screen.dart';
@@ -721,269 +723,73 @@ class _AudioLooperScreenState extends State<AudioLooperScreen> {
   }
 
   void _editLibraryAudioName(SavedAudioEntry entry) {
-    TextEditingController controller = TextEditingController(text: entry.name);
-    showDialog(
-      context: context,
-      builder: (context) => AlertDialog(
-        backgroundColor: const Color(0xFF181818),
-        title: const Text(
-          'Edit Audio Name',
-          style: TextStyle(color: Colors.white),
-        ),
-        content: TextField(
-          controller: controller,
-          style: const TextStyle(color: Colors.white),
-          decoration: const InputDecoration(
-            hintText: "Enter new name",
-            hintStyle: TextStyle(color: Colors.grey),
-            enabledBorder: UnderlineInputBorder(
-              borderSide: BorderSide(color: Colors.grey),
-            ),
-            focusedBorder: UnderlineInputBorder(
-              borderSide: BorderSide(color: Color(0xFF1DB954)),
-            ),
-          ),
-          autofocus: true,
-        ),
-        actions: [
-          TextButton(
-            child: const Text('CANCEL', style: TextStyle(color: Colors.grey)),
-            onPressed: () => Navigator.pop(context),
-          ),
-          TextButton(
-            child: const Text(
-              'SAVE',
-              style: TextStyle(color: Color(0xFF1DB954)),
-            ),
-            onPressed: () {
-              if (controller.text.trim().isNotEmpty) {
-                setState(() {
-                  entry.name = controller.text.trim();
-                });
-                _saveLibrary(); // Save changes to library right away
-              }
-              Navigator.pop(context);
-            },
-          ),
-        ],
-      ),
+    GroupDialogs.showEditAudioName(
+      context,
+      currentName: entry.name,
+      onSaved: (name) {
+        setState(() {
+          entry.name = name;
+        });
+        _saveLibrary();
+      },
     );
   }
 
   void _moveAudioToGroup(SavedAudioEntry entry) {
-    showDialog(
-      context: context,
-      builder: (context) => AlertDialog(
-        backgroundColor: const Color(0xFF181818),
-        title: const Text(
-          'Move to Group',
-          style: TextStyle(color: Colors.white),
-        ),
-        content: SizedBox(
-          width: 300,
-          height: 200,
-          child: ListView(
-            children: [
-              ListTile(
-                title: const Text(
-                  'No Group',
-                  style: TextStyle(color: Colors.white),
-                ),
-                onTap: () {
-                  setState(() {
-                    entry.groupId = null;
-                  });
-                  _saveLibrary();
-                  Navigator.pop(context);
-                },
-              ),
-              ..._audioGroups.map((group) {
-                return ListTile(
-                  title: Text(
-                    group.name,
-                    style: const TextStyle(color: Colors.white),
-                  ),
-                  onTap: () {
-                    setState(() {
-                      entry.groupId = group.id;
-                    });
-                    _saveLibrary();
-                    Navigator.pop(context);
-                  },
-                );
-              }),
-            ],
-          ),
-        ),
-        actions: [
-          TextButton(
-            child: const Text('CANCEL', style: TextStyle(color: Colors.grey)),
-            onPressed: () => Navigator.pop(context),
-          ),
-        ],
-      ),
+    GroupDialogs.showMoveAudioToGroup(
+      context,
+      entry: entry,
+      groups: _audioGroups,
+      onSelected: (groupId) {
+        setState(() {
+          entry.groupId = groupId;
+        });
+        _saveLibrary();
+      },
     );
   }
 
   void _editAudioName() {
     if (_currentEntry == null) return;
-
-    TextEditingController controller = TextEditingController(
-      text: _currentEntry!.name,
-    );
-
-    showDialog(
-      context: context,
-      builder: (context) => AlertDialog(
-        backgroundColor: const Color(0xFF181818),
-        title: const Text(
-          'Edit Audio Name',
-          style: TextStyle(color: Colors.white),
-        ),
-        content: TextField(
-          controller: controller,
-          style: const TextStyle(color: Colors.white),
-          decoration: const InputDecoration(
-            hintText: "Enter new name",
-            hintStyle: TextStyle(color: Colors.grey),
-            enabledBorder: UnderlineInputBorder(
-              borderSide: BorderSide(color: Colors.grey),
-            ),
-            focusedBorder: UnderlineInputBorder(
-              borderSide: BorderSide(color: Color(0xFF1DB954)),
-            ),
-          ),
-          autofocus: true,
-        ),
-        actions: [
-          TextButton(
-            child: const Text('CANCEL', style: TextStyle(color: Colors.grey)),
-            onPressed: () => Navigator.pop(context),
-          ),
-          TextButton(
-            child: const Text(
-              'SAVE',
-              style: TextStyle(color: Color(0xFF1DB954)),
-            ),
-            onPressed: () {
-              if (controller.text.trim().isNotEmpty) {
-                setState(() {
-                  _currentEntry!.name = controller.text.trim();
-                });
-                _upsertAudioEntry();
-              }
-              Navigator.pop(context);
-            },
-          ),
-        ],
-      ),
+    GroupDialogs.showEditAudioName(
+      context,
+      currentName: _currentEntry!.name,
+      onSaved: (name) {
+        setState(() {
+          _currentEntry!.name = name;
+        });
+        _upsertAudioEntry();
+      },
     );
   }
 
   void _createNewGroup() {
-    TextEditingController controller = TextEditingController();
-
-    showDialog(
-      context: context,
-      builder: (context) => AlertDialog(
-        backgroundColor: const Color(0xFF181818),
-        title: const Text(
-          'Create New Group',
-          style: TextStyle(color: Colors.white),
-        ),
-        content: TextField(
-          controller: controller,
-          style: const TextStyle(color: Colors.white),
-          decoration: const InputDecoration(
-            hintText: "Group name",
-            hintStyle: TextStyle(color: Colors.grey),
-            enabledBorder: UnderlineInputBorder(
-              borderSide: BorderSide(color: Colors.grey),
+    GroupDialogs.showCreateGroup(
+      context,
+      onCreated: (name) {
+        setState(() {
+          _audioGroups.add(
+            AudioGroup(
+              id: DateTime.now().millisecondsSinceEpoch.toString(),
+              name: name,
             ),
-            focusedBorder: UnderlineInputBorder(
-              borderSide: BorderSide(color: Color(0xFF1DB954)),
-            ),
-          ),
-          autofocus: true,
-        ),
-        actions: [
-          TextButton(
-            child: const Text('CANCEL', style: TextStyle(color: Colors.grey)),
-            onPressed: () => Navigator.pop(context),
-          ),
-          TextButton(
-            child: const Text(
-              'CREATE',
-              style: TextStyle(color: Color(0xFF1DB954)),
-            ),
-            onPressed: () {
-              if (controller.text.trim().isNotEmpty) {
-                setState(() {
-                  _audioGroups.add(
-                    AudioGroup(
-                      id: DateTime.now().millisecondsSinceEpoch.toString(),
-                      name: controller.text.trim(),
-                    ),
-                  );
-                });
-                _saveLibrary();
-              }
-              Navigator.pop(context);
-            },
-          ),
-        ],
-      ),
+          );
+        });
+        _saveLibrary();
+      },
     );
   }
 
   void _renameGroup(AudioGroup group) {
-    TextEditingController controller = TextEditingController(text: group.name);
-
-    showDialog(
-      context: context,
-      builder: (context) => AlertDialog(
-        backgroundColor: const Color(0xFF181818),
-        title: const Text(
-          'Rename Group',
-          style: TextStyle(color: Colors.white),
-        ),
-        content: TextField(
-          controller: controller,
-          style: const TextStyle(color: Colors.white),
-          decoration: const InputDecoration(
-            hintText: "Group name",
-            hintStyle: TextStyle(color: Colors.grey),
-            enabledBorder: UnderlineInputBorder(
-              borderSide: BorderSide(color: Colors.grey),
-            ),
-            focusedBorder: UnderlineInputBorder(
-              borderSide: BorderSide(color: Color(0xFF1DB954)),
-            ),
-          ),
-          autofocus: true,
-        ),
-        actions: [
-          TextButton(
-            child: const Text('CANCEL', style: TextStyle(color: Colors.grey)),
-            onPressed: () => Navigator.pop(context),
-          ),
-          TextButton(
-            child: const Text(
-              'RENAME',
-              style: TextStyle(color: Color(0xFF1DB954)),
-            ),
-            onPressed: () {
-              if (controller.text.trim().isNotEmpty) {
-                setState(() {
-                  group.name = controller.text.trim();
-                });
-                _saveLibrary();
-              }
-              Navigator.pop(context);
-            },
-          ),
-        ],
-      ),
+    GroupDialogs.showRenameGroup(
+      context,
+      group: group,
+      onRenamed: (name) {
+        setState(() {
+          group.name = name;
+        });
+        _saveLibrary();
+      },
     );
   }
 
@@ -1001,121 +807,25 @@ class _AudioLooperScreenState extends State<AudioLooperScreen> {
   }
 
   void _showAddAudiosToGroup(AudioGroup group) {
-    String search = '';
-    final selected = <String>{};
-
-    showDialog(
-      context: context,
-      builder: (context) => StatefulBuilder(
-        builder: (context, setDialogState) {
-          final filtered = _library
-              .where((a) => a.name.toLowerCase().contains(search.toLowerCase()))
-              .toList();
-
-          return AlertDialog(
-            backgroundColor: const Color(0xFF181818),
-            title: Text(
-              'Add audios to ${group.name}',
-              style: const TextStyle(color: Colors.white),
-            ),
-            content: SizedBox(
-              width: 360,
-              height: 420,
-              child: Column(
-                children: [
-                  TextField(
-                    style: const TextStyle(color: Colors.white),
-                    decoration: const InputDecoration(
-                      hintText: 'Search audio...',
-                      hintStyle: TextStyle(color: Colors.grey),
-                      prefixIcon: Icon(Icons.search, color: Colors.grey),
-                    ),
-                    onChanged: (value) {
-                      setDialogState(() => search = value);
-                    },
-                  ),
-                  const SizedBox(height: 10),
-                  Expanded(
-                    child: filtered.isEmpty
-                        ? const Center(
-                            child: Text(
-                              'No audio found',
-                              style: TextStyle(color: Colors.grey),
-                            ),
-                          )
-                        : ListView.builder(
-                            itemCount: filtered.length,
-                            itemBuilder: (context, index) {
-                              final item = filtered[index];
-                              final checked = selected.contains(item.path);
-                              return CheckboxListTile(
-                                value: checked,
-                                activeColor: const Color(0xFF1DB954),
-                                title: Text(
-                                  item.name,
-                                  style: const TextStyle(color: Colors.white),
-                                  maxLines: 1,
-                                  overflow: TextOverflow.ellipsis,
-                                ),
-                                subtitle: Text(
-                                  item.groupId == null
-                                      ? 'Ungrouped'
-                                      : 'In another group',
-                                  style: const TextStyle(color: Colors.grey),
-                                ),
-                                controlAffinity:
-                                    ListTileControlAffinity.leading,
-                                onChanged: (value) {
-                                  setDialogState(() {
-                                    if (value == true) {
-                                      selected.add(item.path);
-                                    } else {
-                                      selected.remove(item.path);
-                                    }
-                                  });
-                                },
-                              );
-                            },
-                          ),
-                  ),
-                ],
-              ),
-            ),
-            actions: [
-              TextButton(
-                onPressed: () => Navigator.pop(context),
-                child: const Text(
-                  'CANCEL',
-                  style: TextStyle(color: Colors.grey),
-                ),
-              ),
-              TextButton(
-                onPressed: () {
-                  setState(() {
-                    for (final path in selected) {
-                      final idx = _library.indexWhere((a) => a.path == path);
-                      if (idx != -1) {
-                        _library[idx].groupId = group.id;
-                      }
-                    }
-                  });
-                  _saveLibrary();
-                  Navigator.pop(context);
-                },
-                child: const Text(
-                  'ADD',
-                  style: TextStyle(color: Color(0xFF1DB954)),
-                ),
-              ),
-            ],
-          );
-        },
-      ),
+    GroupDialogs.showAddAudiosToGroup(
+      context,
+      group: group,
+      library: _library,
+      onAdded: (selected) {
+        setState(() {
+          for (final path in selected) {
+            final idx = _library.indexWhere((a) => a.path == path);
+            if (idx != -1) {
+              _library[idx].groupId = group.id;
+            }
+          }
+        });
+        _saveLibrary();
+      },
     );
   }
 
   void _openLibraryPanel() {
-    String librarySearchQuery = "";
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
@@ -1126,386 +836,52 @@ class _AudioLooperScreenState extends State<AudioLooperScreen> {
       builder: (context) {
         return StatefulBuilder(
           builder: (context, setModalState) {
-            return FractionallySizedBox(
-              heightFactor: 0.72,
-              child: Container(
-                decoration: const BoxDecoration(
-                  color: Color(0xFF121212),
-                  borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
-                ),
-                child: Column(
-                  children: [
-                    Container(
-                      margin: const EdgeInsets.only(top: 12, bottom: 8),
-                      width: 40,
-                      height: 4,
-                      decoration: BoxDecoration(
-                        color: Colors.grey[700],
-                        borderRadius: BorderRadius.circular(2),
-                      ),
-                    ),
-                    Padding(
-                      padding: const EdgeInsets.fromLTRB(20, 16, 20, 16),
-                      child: Row(
-                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                        children: [
-                          const Text(
-                            "Audio Library",
-                            style: TextStyle(
-                              fontSize: 20,
-                              fontWeight: FontWeight.bold,
-                            ),
-                          ),
-                          Row(
-                            children: [
-                              IconButton(
-                                icon: const Icon(
-                                  Icons.add_circle,
-                                  color: Color(0xFF1DB954),
-                                  size: 24,
-                                ),
-                                onPressed: () {
-                                  Navigator.pop(context);
-                                  _createNewGroup();
-                                },
-                              ),
-                              SizedBox(
-                                width: 120,
-                                child: TextField(
-                                  decoration: InputDecoration(
-                                    hintText: "Search...",
-                                    hintStyle: const TextStyle(
-                                      color: Colors.grey,
-                                      fontSize: 13,
-                                    ),
-                                    isDense: true,
-                                    prefixIcon: const Icon(
-                                      Icons.search,
-                                      size: 16,
-                                      color: Colors.grey,
-                                    ),
-                                    contentPadding: EdgeInsets.zero,
-                                    filled: true,
-                                    fillColor: const Color(0xFF282828),
-                                    border: OutlineInputBorder(
-                                      borderRadius: BorderRadius.circular(20),
-                                      borderSide: BorderSide.none,
-                                    ),
-                                  ),
-                                  style: const TextStyle(
-                                    color: Colors.white,
-                                    fontSize: 14,
-                                  ),
-                                  onChanged: (val) {
-                                    setModalState(
-                                      () => librarySearchQuery = val,
-                                    );
-                                  },
-                                ),
-                              ),
-                            ],
-                          ),
-                        ],
-                      ),
-                    ),
-                    Expanded(
-                      child: ListView.builder(
-                        itemCount:
-                            _audioGroups.length +
-                            (_library.where((e) => e.groupId == null).isNotEmpty
-                                ? 1
-                                : 0),
-                        itemBuilder: (context, index) {
-                          // Ungrouped items at the top
-                          if (index == 0 &&
-                              _library
-                                  .where((e) => e.groupId == null)
-                                  .isNotEmpty) {
-                            final ungroupedItems = _library
-                                .where(
-                                  (e) =>
-                                      e.groupId == null &&
-                                      e.name.toLowerCase().contains(
-                                        librarySearchQuery.toLowerCase(),
-                                      ),
-                                )
-                                .toList();
-
-                            return Column(
-                              children: ungroupedItems.map((item) {
-                                return Container(
-                                  margin: const EdgeInsets.symmetric(
-                                    horizontal: 12,
-                                    vertical: 4,
-                                  ),
-                                  decoration: BoxDecoration(
-                                    color: const Color(0xFF181818),
-                                    borderRadius: BorderRadius.circular(8),
-                                  ),
-                                  child: ListTile(
-                                    leading: Icon(
-                                      _getAudioStatusIcon(item),
-                                      color: _getAudioStatusIconColor(item),
-                                    ),
-                                    title: Text(item.name),
-                                    subtitle: Text(
-                                      "${item.segments.length} segments",
-                                      style: const TextStyle(
-                                        color: Colors.grey,
-                                      ),
-                                    ),
-                                    trailing: PopupMenuButton<String>(
-                                      icon: const Icon(
-                                        Icons.more_vert,
-                                        color: Colors.grey,
-                                        size: 18,
-                                      ),
-                                      color: const Color(0xFF222222),
-                                      onSelected: (value) {
-                                        if (value == 'source') {
-                                          _openAudioSource(item);
-                                        } else if (value == 'move') {
-                                          _moveAudioToGroup(item);
-                                        } else if (value == 'edit') {
-                                          _editLibraryAudioName(item);
-                                        } else if (value == 'delete') {
-                                          setState(() {
-                                            _library.remove(item);
-                                            if (_currentEntry == item) {
-                                              _currentEntry = null;
-                                              _player.stop();
-                                            }
-                                          });
-                                          _saveLibrary();
-                                          setModalState(() {});
-                                        }
-                                      },
-                                      itemBuilder: (context) => const [
-                                        PopupMenuItem(
-                                          value: 'source',
-                                          child: Text(
-                                            'Open source (Imam/Surah)',
-                                          ),
-                                        ),
-                                        PopupMenuItem(
-                                          value: 'move',
-                                          child: Text('Move to group'),
-                                        ),
-                                        PopupMenuItem(
-                                          value: 'edit',
-                                          child: Text('Rename'),
-                                        ),
-                                        PopupMenuItem(
-                                          value: 'delete',
-                                          child: Text('Delete'),
-                                        ),
-                                      ],
-                                    ),
-                                    onTap: () {
-                                      Navigator.pop(context);
-                                      _loadFile(
-                                        item.path,
-                                        item.name,
-                                        sourceReciterName:
-                                            item.sourceReciterName,
-                                        sourceSurahName: item.sourceSurahName,
-                                        sourceSurahId: item.sourceSurahId,
-                                      );
-                                    },
-                                  ),
-                                );
-                              }).toList(),
-                            );
-                          }
-
-                          // Groups
-                          final groupIndex =
-                              _library
-                                  .where((e) => e.groupId == null)
-                                  .isNotEmpty
-                              ? index - 1
-                              : index;
-                          if (groupIndex < 0 ||
-                              groupIndex >= _audioGroups.length) {
-                            return const SizedBox.shrink();
-                          }
-
-                          final group = _audioGroups[groupIndex];
-                          final groupItems = _library
-                              .where(
-                                (e) =>
-                                    e.groupId == group.id &&
-                                    e.name.toLowerCase().contains(
-                                      librarySearchQuery.toLowerCase(),
-                                    ),
-                              )
-                              .toList();
-
-                          return Column(
-                            children: [
-                              ListTile(
-                                leading: Icon(
-                                  group.isExpanded
-                                      ? Icons.folder_open
-                                      : Icons.folder,
-                                  color: const Color(0xFF1DB954),
-                                ),
-                                title: Text(
-                                  group.name,
-                                  style: const TextStyle(
-                                    fontWeight: FontWeight.bold,
-                                  ),
-                                ),
-                                subtitle: Text("${groupItems.length} items"),
-                                trailing: Row(
-                                  mainAxisSize: MainAxisSize.min,
-                                  children: [
-                                    IconButton(
-                                      icon: const Icon(
-                                        Icons.add_circle_outline,
-                                        color: Color(0xFF1DB954),
-                                        size: 20,
-                                      ),
-                                      tooltip: 'Add audio to group',
-                                      onPressed: () {
-                                        _showAddAudiosToGroup(group);
-                                      },
-                                    ),
-                                    PopupMenuButton<String>(
-                                      icon: const Icon(
-                                        Icons.more_vert,
-                                        color: Colors.grey,
-                                        size: 18,
-                                      ),
-                                      color: const Color(0xFF222222),
-                                      onSelected: (value) {
-                                        if (value == 'rename') {
-                                          _renameGroup(group);
-                                        } else if (value == 'delete') {
-                                          _deleteGroup(group);
-                                          setModalState(() {});
-                                        }
-                                      },
-                                      itemBuilder: (context) => const [
-                                        PopupMenuItem(
-                                          value: 'rename',
-                                          child: Text('Rename group'),
-                                        ),
-                                        PopupMenuItem(
-                                          value: 'delete',
-                                          child: Text('Delete group'),
-                                        ),
-                                      ],
-                                    ),
-                                  ],
-                                ),
-                                onTap: () {
-                                  setState(() {
-                                    group.isExpanded = !group.isExpanded;
-                                  });
-                                  setModalState(() {});
-                                },
-                              ),
-                              if (group.isExpanded)
-                                ...groupItems.map((item) {
-                                  return Container(
-                                    margin: const EdgeInsets.only(
-                                      left: 10,
-                                      right: 12,
-                                      top: 2,
-                                      bottom: 2,
-                                    ),
-                                    decoration: BoxDecoration(
-                                      color: const Color(0xFF181818),
-                                      borderRadius: BorderRadius.circular(8),
-                                    ),
-                                    child: ListTile(
-                                      leading: Padding(
-                                        padding: const EdgeInsets.only(
-                                          left: 12.0,
-                                        ),
-                                        child: Icon(
-                                          _getAudioStatusIcon(item),
-                                          color: _getAudioStatusIconColor(item),
-                                          size: 18,
-                                        ),
-                                      ),
-                                      title: Text(item.name),
-                                      subtitle: Text(
-                                        "${item.segments.length} segments",
-                                        style: const TextStyle(
-                                          color: Colors.grey,
-                                        ),
-                                      ),
-                                      trailing: PopupMenuButton<String>(
-                                        icon: const Icon(
-                                          Icons.more_vert,
-                                          color: Colors.grey,
-                                          size: 18,
-                                        ),
-                                        color: const Color(0xFF222222),
-                                        onSelected: (value) {
-                                          if (value == 'source') {
-                                            _openAudioSource(item);
-                                          } else if (value == 'move') {
-                                            _moveAudioToGroup(item);
-                                          } else if (value == 'edit') {
-                                            _editLibraryAudioName(item);
-                                          } else if (value == 'delete') {
-                                            setState(() {
-                                              _library.remove(item);
-                                              if (_currentEntry == item) {
-                                                _currentEntry = null;
-                                                _player.stop();
-                                              }
-                                            });
-                                            _saveLibrary();
-                                            setModalState(() {});
-                                          }
-                                        },
-                                        itemBuilder: (context) => const [
-                                          PopupMenuItem(
-                                            value: 'source',
-                                            child: Text(
-                                              'Open source (Imam/Surah)',
-                                            ),
-                                          ),
-                                          PopupMenuItem(
-                                            value: 'move',
-                                            child: Text('Move to group'),
-                                          ),
-                                          PopupMenuItem(
-                                            value: 'edit',
-                                            child: Text('Rename'),
-                                          ),
-                                          PopupMenuItem(
-                                            value: 'delete',
-                                            child: Text('Delete'),
-                                          ),
-                                        ],
-                                      ),
-                                      onTap: () {
-                                        Navigator.pop(context);
-                                        _loadFile(
-                                          item.path,
-                                          item.name,
-                                          sourceReciterName:
-                                              item.sourceReciterName,
-                                          sourceSurahName: item.sourceSurahName,
-                                          sourceSurahId: item.sourceSurahId,
-                                        );
-                                      },
-                                    ),
-                                  );
-                                }),
-                            ],
-                          );
-                        },
-                      ),
-                    ),
-                  ],
-                ),
-              ),
+            return LibraryPanel(
+              library: _library,
+              audioGroups: _audioGroups,
+              currentEntry: _currentEntry,
+              onSelectAudio: (item) {
+                Navigator.pop(context);
+                _loadFile(
+                  item.path,
+                  item.name,
+                  sourceReciterName: item.sourceReciterName,
+                  sourceSurahName: item.sourceSurahName,
+                  sourceSurahId: item.sourceSurahId,
+                );
+              },
+              onCreateGroup: () {
+                Navigator.pop(context);
+                _createNewGroup();
+              },
+              onAddAudiosToGroup: (group) => _showAddAudiosToGroup(group),
+              onRenameGroup: (group) => _renameGroup(group),
+              onDeleteGroup: (group) {
+                _deleteGroup(group);
+                setModalState(() {});
+              },
+              onToggleGroupExpanded: (group) {
+                setState(() {
+                  group.isExpanded = !group.isExpanded;
+                });
+                setModalState(() {});
+              },
+              onOpenAudioSource: (item) => _openAudioSource(item),
+              onMoveAudioToGroup: (item) => _moveAudioToGroup(item),
+              onEditAudioName: (item) => _editLibraryAudioName(item),
+              onDeleteAudio: (item) {
+                setState(() {
+                  _library.remove(item);
+                  if (_currentEntry == item) {
+                    _currentEntry = null;
+                    _player.stop();
+                  }
+                });
+                _saveLibrary();
+                setModalState(() {});
+              },
+              getAudioStatusIcon: _getAudioStatusIcon,
+              getAudioStatusIconColor: _getAudioStatusIconColor,
             );
           },
         );
