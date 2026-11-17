@@ -68,4 +68,17 @@
 | **Flutter Analyze** | 0 errors, 0 warnings | Clean |
 | **Flutter Test** | All widget & unit tests passing | Passed |
 | **Release APK** | `build/app/outputs/flutter-apk/app-release.apk` (57.4 MB) | Built & Verified |
-| **GitHub Release** | GitHub Releases with APK (`.apk`) and iOS IPA (`.ipa`) assets | Automated via CI/CD |
+
+---
+
+## 4. Releases & Download Links
+
+### 🚀 Release v4.1 (Latest)
+- **Release Page**: [GitHub Release v4.1](https://github.com/AmineOuatt/ipa-mp3/releases/tag/v4.1)
+- **Android APK**: [Download MP360-v4.1.apk (60.1 MB)](https://github.com/AmineOuatt/ipa-mp3/releases/download/v4.1/MP360-v4.1.apk)
+- **iOS IPA**: [Download MP360-v4.1.ipa (9.55 MB)](https://github.com/AmineOuatt/ipa-mp3/releases/download/v4.1/MP360-v4.1.ipa)
+
+### 📦 Release v4.0
+- **Release Page**: [GitHub Release v4.0](https://github.com/AmineOuatt/ipa-mp3/releases/tag/v4.0)
+- **Android APK**: [Download MP360-v4.0.apk (60.1 MB)](https://github.com/AmineOuatt/ipa-mp3/releases/download/v4.0/MP360-v4.0.apk)
+- **iOS IPA**: [Download MP360-v4.0.ipa (9.55 MB)](https://github.com/AmineOuatt/ipa-mp3/releases/download/v4.0/MP360-v4.0.ipa)
