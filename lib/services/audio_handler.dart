@@ -4,6 +4,8 @@ import 'package:audio_service/audio_service.dart';
 import 'package:flutter/foundation.dart';
 import 'package:just_audio/just_audio.dart';
 
+import 'widget_service.dart';
+
 class AppAudioHandler extends BaseAudioHandler with SeekHandler {
   final AudioPlayer _player;
 
@@ -51,6 +53,12 @@ class AppAudioHandler extends BaseAudioHandler with SeekHandler {
         duration: duration,
       ),
     );
+
+    WidgetService.updateWidget(
+      title: title,
+      artist: _mediaArtist ?? 'MP360',
+      isPlaying: _player.playing,
+    );
   }
 
   void _broadcastPlaybackState(PlayerState state) {
@@ -71,6 +79,12 @@ class AppAudioHandler extends BaseAudioHandler with SeekHandler {
         bufferedPosition: _player.bufferedPosition,
         speed: _player.speed,
       ),
+    );
+
+    WidgetService.updateWidget(
+      title: _mediaTitle ?? 'MP360',
+      artist: _mediaArtist ?? 'No Audio Playing',
+      isPlaying: state.playing,
     );
   }
 
@@ -101,6 +115,7 @@ class AppAudioHandler extends BaseAudioHandler with SeekHandler {
   @override
   Future<void> stop() async {
     await _player.stop();
+    await WidgetService.clearWidget();
     return super.stop();
   }
 
