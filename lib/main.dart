@@ -13,15 +13,28 @@ export 'services/audio_handler.dart' show appPlayer, appAudioHandler;
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
-  if (useIosMediaControls) {
-    final player = AudioPlayer();
-    appAudioHandler = await AudioService.init(
-      builder: () => AppAudioHandler(player),
-    );
-    appPlayer = appAudioHandler!.player;
+  final player = AudioPlayer();
+  if (!kIsWeb &&
+      (defaultTargetPlatform == TargetPlatform.android ||
+          defaultTargetPlatform == TargetPlatform.iOS)) {
+    try {
+      appAudioHandler = await AudioService.init(
+        builder: () => AppAudioHandler(player),
+        config: const AudioServiceConfig(
+          androidNotificationChannelId: 'com.example.mp3.channel.audio',
+          androidNotificationChannelName: 'MP360 Playback',
+          androidNotificationIcon: 'mipmap/ic_launcher',
+        ),
+      );
+      appPlayer = appAudioHandler!.player;
+    } catch (e) {
+      debugPrint('AudioService init failed: $e');
+      appAudioHandler = null;
+      appPlayer = player;
+    }
   } else {
     appAudioHandler = null;
-    appPlayer = AudioPlayer();
+    appPlayer = player;
   }
 
   try {

@@ -71,6 +71,40 @@ class _AudioLooperScreenState extends State<AudioLooperScreen> {
               defaultTargetPlatform == TargetPlatform.iOS)) {
         final session = await AudioSession.instance;
         await session.configure(const AudioSessionConfiguration.music());
+        session.becomingNoisyEventStream.listen((_) {
+          _player.pause();
+        });
+
+        if (appAudioHandler != null) {
+          appAudioHandler!.onSkipToNext = () {
+            if (_library.isEmpty || _currentEntry == null) return;
+            final idx = _library.indexOf(_currentEntry!);
+            if (idx != -1 && idx + 1 < _library.length) {
+              final next = _library[idx + 1];
+              _loadFile(
+                next.path,
+                next.name,
+                sourceReciterName: next.sourceReciterName,
+                sourceSurahName: next.sourceSurahName,
+                sourceSurahId: next.sourceSurahId,
+              );
+            }
+          };
+          appAudioHandler!.onSkipToPrevious = () {
+            if (_library.isEmpty || _currentEntry == null) return;
+            final idx = _library.indexOf(_currentEntry!);
+            if (idx > 0) {
+              final prev = _library[idx - 1];
+              _loadFile(
+                prev.path,
+                prev.name,
+                sourceReciterName: prev.sourceReciterName,
+                sourceSurahName: prev.sourceSurahName,
+                sourceSurahId: prev.sourceSurahId,
+              );
+            }
+          };
+        }
       }
     } catch (e) {
       debugPrint('Audio session init skipped: $e');

@@ -89,6 +89,9 @@ class AppAudioHandler extends BaseAudioHandler with SeekHandler {
     }
   }
 
+  VoidCallback? onSkipToNext;
+  VoidCallback? onSkipToPrevious;
+
   @override
   Future<void> play() => _player.play();
 
@@ -96,13 +99,46 @@ class AppAudioHandler extends BaseAudioHandler with SeekHandler {
   Future<void> pause() => _player.pause();
 
   @override
+  Future<void> stop() async {
+    await _player.stop();
+    return super.stop();
+  }
+
+  @override
   Future<void> seek(Duration position) => _player.seek(position);
+
+  @override
+  Future<void> skipToNext() async {
+    onSkipToNext?.call();
+  }
+
+  @override
+  Future<void> skipToPrevious() async {
+    onSkipToPrevious?.call();
+  }
+
+  @override
+  Future<void> fastForward() async {
+    final current = _player.position;
+    final target = current + const Duration(seconds: 5);
+    final duration = _player.duration ?? Duration.zero;
+    await _player.seek(target < duration ? target : duration);
+  }
+
+  @override
+  Future<void> rewind() async {
+    final current = _player.position;
+    final target = current - const Duration(seconds: 5);
+    await _player.seek(target > Duration.zero ? target : Duration.zero);
+  }
 }
 
 AppAudioHandler? appAudioHandler;
 late final AudioPlayer appPlayer;
 
 bool get useIosMediaControls => !kIsWeb && Platform.isIOS;
+bool get isAudioServiceSupported =>
+    !kIsWeb && (Platform.isAndroid || Platform.isIOS);
 
 Future<void> publishNowPlayingMetadata({
   required String id,
