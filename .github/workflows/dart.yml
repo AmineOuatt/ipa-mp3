@@ -1,21 +1,22 @@
 name: Mobile-ipa-apk-build
 
 on:
+  push:
+    branches: [ feature/mp360-upgrade, main ]
   workflow_dispatch:
 
 jobs:
   build-ios:
-    name: 🎉 iOS Build
+    name: 🎉 iOS IPA Build
     runs-on: macos-latest
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
 
       - uses: subosito/flutter-action@v2
         with:
           channel: 'stable'
-          architecture: x64
+          architecture: arm64
       - run: flutter pub get
-      
 
       - run: pod repo update
         working-directory: ios
@@ -28,55 +29,38 @@ jobs:
       - run: mv Runner.app/ Payload
         working-directory: build/ios/iphoneos
 
-      - name: Zip output
+      - name: Package IPA
         run: zip -qq -r -9 FlutterIpaExport.ipa Payload
         working-directory: build/ios/iphoneos
 
-      - name: Upload binaries to release
-        uses: svenstaro/upload-release-action@v2
+      - name: Upload IPA Artifact
+        uses: actions/upload-artifact@v4
         with:
-          repo_token: ${{ secrets.GITHUB_TOKEN }}
-          file: build/ios/iphoneos/FlutterIpaExport.ipa
-          tag: v3.0
-          overwrite: true
-          body: "This is first release"
+          name: MP360-iOS-IPA
+          path: build/ios/iphoneos/FlutterIpaExport.ipa
 
   build-android:
-    name: 🤖 Android Build
+    name: 🤖 Android APK Build
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
 
-      - name: Set up Java 17
+      - name: Set up Java 21
         uses: actions/setup-java@v4
         with:
           distribution: temurin
-          java-version: '17'
+          java-version: '21'
 
       - uses: subosito/flutter-action@v2
         with:
           channel: 'stable'
 
-      - name: Set up Android SDK
-        uses: android-actions/setup-android@v3
-
-      - name: Install Android build dependencies
-        run: |
-          yes | sdkmanager --licenses
-          sdkmanager "platform-tools" "platforms;android-35" "build-tools;35.0.0" "ndk;30.0.14904198"
-
       - run: flutter pub get
-
-      - run: flutter doctor -v
 
       - run: flutter build apk --release
 
-      - name: Upload APK to release
-        uses: svenstaro/upload-release-action@v2
+      - name: Upload APK Artifact
+        uses: actions/upload-artifact@v4
         with:
-          repo_token: ${{ secrets.GITHUB_TOKEN }}
-          file: build/app/outputs/flutter-apk/app-release.apk
-          asset_name: FlutterApkExport.apk
-          tag: v3.0
-          overwrite: true
-          body: "This is first release"
+          name: MP360-Android-Release-APK
+          path: build/app/outputs/flutter-apk/app-release.apk
