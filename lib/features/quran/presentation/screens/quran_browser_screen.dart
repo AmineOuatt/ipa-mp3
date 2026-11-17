@@ -4,6 +4,8 @@ import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../../../../core/constants/app_colors.dart';
+import '../../../../services/download_service.dart';
+import '../../../downloads/presentation/screens/youtube_download_screen.dart';
 import 'surah_selection_screen.dart';
 
 class QuranBrowserMode extends StatefulWidget {
@@ -172,6 +174,102 @@ class _QuranBrowserModeState extends State<QuranBrowserMode> {
     if (result != null && mounted) {
       Navigator.pop(context, result);
     }
+  }
+
+  void _downloadFullReciterFolder(dynamic reciter) {
+    if (reciter['moshaf'] == null || (reciter['moshaf'] as List).isEmpty) {
+      return;
+    }
+    final moshaf = reciter['moshaf'][0];
+    final availableSurahs = moshaf['surah_list'].toString().split(',');
+    final allSuwar = _suwar
+        .where((s) => availableSurahs.contains(s['id'].toString()))
+        .toList();
+    final reciterName = reciter['name'].toString();
+    final folderController = TextEditingController(text: reciterName);
+
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        backgroundColor: const Color(0xFF181818),
+        title: const Text(
+          'Download Full Folder of Suwar',
+          style: TextStyle(color: Colors.white),
+        ),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              'Download all ${allSuwar.length} suwar by $reciterName into a dedicated folder in your library.',
+              style: const TextStyle(color: Colors.white70, fontSize: 13),
+            ),
+            const SizedBox(height: 16),
+            TextField(
+              controller: folderController,
+              style: const TextStyle(color: Colors.white),
+              decoration: const InputDecoration(
+                labelText: 'Folder Name / Reciter',
+                labelStyle: TextStyle(color: Colors.grey),
+                enabledBorder: UnderlineInputBorder(
+                  borderSide: BorderSide(color: Colors.grey),
+                ),
+                focusedBorder: UnderlineInputBorder(
+                  borderSide: BorderSide(color: AppColors.primary),
+                ),
+              ),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            child: const Text('CANCEL', style: TextStyle(color: Colors.grey)),
+            onPressed: () => Navigator.pop(context),
+          ),
+          TextButton(
+            child: const Text(
+              'DOWNLOAD ALL',
+              style: TextStyle(
+                color: AppColors.primary,
+                fontWeight: FontWeight.bold,
+              ),
+            ),
+            onPressed: () {
+              final folder = folderController.text.trim();
+              if (folder.isNotEmpty) {
+                DownloadService.instance.enqueueQuranReciterDownload(
+                  reciterName: reciterName,
+                  serverUrl: moshaf['server'].toString(),
+                  suwarToDownload: allSuwar,
+                  customFolderName: folder,
+                );
+                Navigator.pop(context);
+                ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(
+                    content: Text(
+                      'Queued ${allSuwar.length} suwar into folder "$folder"',
+                    ),
+                    backgroundColor: AppColors.primary,
+                    action: SnackBarAction(
+                      label: 'VIEW QUEUE',
+                      textColor: Colors.black,
+                      onPressed: () {
+                        Navigator.push(
+                          context,
+                          MaterialPageRoute(
+                            builder: (_) => const YoutubeDownloadScreen(),
+                          ),
+                        );
+                      },
+                    ),
+                  ),
+                );
+              }
+            },
+          ),
+        ],
+      ),
+    );
   }
 
   @override
@@ -351,12 +449,30 @@ class _QuranBrowserModeState extends State<QuranBrowserMode> {
                               fontSize: 12,
                             ),
                           ),
-                          trailing: IconButton(
-                            icon: Icon(
-                              isFav ? Icons.favorite : Icons.favorite_border,
-                              color: isFav ? AppColors.primary : Colors.white54,
-                            ),
-                            onPressed: () => _toggleFavorite(id),
+                          trailing: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              IconButton(
+                                icon: const Icon(
+                                  Icons.download_for_offline_outlined,
+                                  color: AppColors.primary,
+                                  size: 22,
+                                ),
+                                tooltip: "Download All Suwar",
+                                onPressed: () => _downloadFullReciterFolder(r),
+                              ),
+                              IconButton(
+                                icon: Icon(
+                                  isFav
+                                      ? Icons.favorite
+                                      : Icons.favorite_border,
+                                  color: isFav
+                                      ? AppColors.primary
+                                      : Colors.white54,
+                                ),
+                                onPressed: () => _toggleFavorite(id),
+                              ),
+                            ],
                           ),
                           onTap: () => _openReciter(r),
                         );

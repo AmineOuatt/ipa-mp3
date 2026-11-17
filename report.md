@@ -45,6 +45,11 @@
    - In-app progress indicators with percentage, downloaded/total size, and cancel/retry per track.
    - Ongoing Android status bar notification displaying real-time progress for background downloads.
 
+7. **B7: Direct Full Quran Reciter/Imam Folder Download**
+   - When selecting any imam/reciter, download all available suwar directly into a dedicated library folder.
+   - Available directly from `SurahSelectionScreen` (top action button) and from `QuranBrowserScreen` (reciter tile download icon).
+   - Prompts for a folder name (defaults to the reciter's name, editable), queues downloads with concurrency throttling, displays background progress notifications, and registers the folder in the Audio Library.
+
 ---
 
 ## 3. Build & Verification Status
@@ -59,3 +64,4 @@
 | **GitHub Push** | Branch `feature/mp360-upgrade` on `origin` | Up-to-date |
 
 *Note on iOS: Cross-platform code and configurations are 100% compatible. Generating the `.ipa` package requires compilation on macOS with Xcode.*
+

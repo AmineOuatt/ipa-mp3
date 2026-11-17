@@ -6,6 +6,8 @@ import 'package:just_audio/just_audio.dart';
 import 'package:path_provider/path_provider.dart';
 
 import '../../../../core/constants/app_colors.dart';
+import '../../../../services/download_service.dart';
+import '../../../downloads/presentation/screens/youtube_download_screen.dart';
 
 class SurahSelectionScreen extends StatefulWidget {
   final String reciterName;
@@ -204,6 +206,93 @@ class _SurahSelectionScreenState extends State<SurahSelectionScreen> {
     }
   }
 
+  void _showDownloadAllSuwarDialog(List<dynamic> allAvailableSuwar) {
+    final folderController = TextEditingController(text: widget.reciterName);
+
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        backgroundColor: const Color(0xFF181818),
+        title: const Text(
+          'Download Full Folder of Suwar',
+          style: TextStyle(color: Colors.white),
+        ),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              'Download all ${allAvailableSuwar.length} suwar by ${widget.reciterName} into a dedicated folder in your audio library.',
+              style: const TextStyle(color: Colors.white70, fontSize: 13),
+            ),
+            const SizedBox(height: 16),
+            TextField(
+              controller: folderController,
+              style: const TextStyle(color: Colors.white),
+              decoration: const InputDecoration(
+                labelText: 'Folder Name / Reciter',
+                labelStyle: TextStyle(color: Colors.grey),
+                enabledBorder: UnderlineInputBorder(
+                  borderSide: BorderSide(color: Colors.grey),
+                ),
+                focusedBorder: UnderlineInputBorder(
+                  borderSide: BorderSide(color: AppColors.primary),
+                ),
+              ),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            child: const Text('CANCEL', style: TextStyle(color: Colors.grey)),
+            onPressed: () => Navigator.pop(context),
+          ),
+          TextButton(
+            child: const Text(
+              'DOWNLOAD ALL',
+              style: TextStyle(
+                color: AppColors.primary,
+                fontWeight: FontWeight.bold,
+              ),
+            ),
+            onPressed: () {
+              final folder = folderController.text.trim();
+              if (folder.isNotEmpty) {
+                DownloadService.instance.enqueueQuranReciterDownload(
+                  reciterName: widget.reciterName,
+                  serverUrl: widget.moshaf['server'].toString(),
+                  suwarToDownload: allAvailableSuwar,
+                  customFolderName: folder,
+                );
+                Navigator.pop(context);
+                ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(
+                    content: Text(
+                      'Queued ${allAvailableSuwar.length} suwar into folder "$folder"',
+                    ),
+                    backgroundColor: AppColors.primary,
+                    action: SnackBarAction(
+                      label: 'VIEW QUEUE',
+                      textColor: Colors.black,
+                      onPressed: () {
+                        Navigator.push(
+                          context,
+                          MaterialPageRoute(
+                            builder: (_) => const YoutubeDownloadScreen(),
+                          ),
+                        );
+                      },
+                    ),
+                  ),
+                );
+              }
+            },
+          ),
+        ],
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final availableSurahs = widget.moshaf['surah_list'].toString().split(',');
@@ -211,6 +300,10 @@ class _SurahSelectionScreenState extends State<SurahSelectionScreen> {
       final name = s['name'].toString().toLowerCase();
       return availableSurahs.contains(s['id'].toString()) &&
           name.contains(_searchQuery.toLowerCase());
+    }).toList();
+
+    final allReciterSuwar = widget.suwarList.where((s) {
+      return availableSurahs.contains(s['id'].toString());
     }).toList();
 
     return Scaffold(
@@ -222,6 +315,17 @@ class _SurahSelectionScreenState extends State<SurahSelectionScreen> {
           widget.reciterName,
           style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 18),
         ),
+        actions: [
+          IconButton(
+            icon: const Icon(
+              Icons.download_for_offline_rounded,
+              color: AppColors.primary,
+              size: 26,
+            ),
+            tooltip: 'Download Full Folder of Suwar',
+            onPressed: () => _showDownloadAllSuwarDialog(allReciterSuwar),
+          ),
+        ],
       ),
       body: Container(
         color: AppColors.background,

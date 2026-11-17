@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:io';
 
 import 'package:flutter/foundation.dart';
+import 'package:http/http.dart' as http;
 import 'package:path_provider/path_provider.dart';
 import 'package:youtube_explode_dart/youtube_explode_dart.dart';
 
@@ -139,6 +140,45 @@ class DownloadService {
     _processQueue();
   }
 
+  Future<void> enqueueQuranReciterDownload({
+    required String reciterName,
+    required String serverUrl,
+    required List<dynamic> suwarToDownload,
+    String? customFolderName,
+  }) async {
+    final folder = customFolderName ?? reciterName;
+    final groupId = DateTime.now().millisecondsSinceEpoch.toString();
+    final group = AudioGroup(id: groupId, name: folder);
+    onGroupCreated?.call(group);
+
+    for (final s in suwarToDownload) {
+      final surahIdStr = s['id'].toString().padLeft(3, '0');
+      final url = "$serverUrl$surahIdStr.mp3";
+      final title = "$reciterName - ${s['name']}";
+      final taskId = "quran_${reciterName}_${s['id']}";
+
+      // Avoid adding if already completed or active
+      final existing = _tasks.indexWhere((t) => t.id == taskId);
+      if (existing != -1 &&
+          (_tasks[existing].isActive || _tasks[existing].isCompleted)) {
+        continue;
+      }
+
+      final task = DownloadTask(
+        id: taskId,
+        url: url,
+        title: title,
+        author: reciterName,
+        targetGroupId: groupId,
+        groupName: folder,
+      );
+      _tasks.add(task);
+    }
+
+    _notify();
+    _processQueue();
+  }
+
   void _processQueue() {
     if (_activeCount >= _maxConcurrentDownloads) return;
 
@@ -158,15 +198,6 @@ class DownloadService {
     File? targetFile;
 
     try {
-      final manifest = await _yt.videos.streamsClient.getManifest(
-        VideoId(task.id),
-      );
-      final audioStreams = manifest.audioOnly.sortByBitrate();
-      if (audioStreams.isEmpty) {
-        throw Exception('No audio stream available for this video');
-      }
-
-      final streamInfo = audioStreams.last; // Highest bitrate audio
       final docDir = await getApplicationDocumentsDirectory();
 
       Directory saveDir;
@@ -181,59 +212,126 @@ class DownloadService {
         await saveDir.create(recursive: true);
       }
 
-      final ext = streamInfo.container.name;
+      final isDirectHttp =
+          task.url.startsWith('http') &&
+          (!task.url.contains('youtube.com') && !task.url.contains('youtu.be'));
+
       final safeTitle = sanitizeFilename(task.title);
-      final filePath = '${saveDir.path}/$safeTitle.$ext';
-      targetFile = File(filePath);
 
-      // Skip download if already exists with full size
-      if (await targetFile.exists() &&
-          await targetFile.length() >= streamInfo.size.totalBytes) {
-        task.savedFilePath = filePath;
-        task.progress = 1.0;
-        task.status = DownloadStatus.completed;
-        _activeCount--;
+      if (isDirectHttp) {
+        final filePath = '${saveDir.path}/$safeTitle.mp3';
+        targetFile = File(filePath);
 
-        _createAudioEntry(task, filePath);
-        _notify();
-        _processQueue();
-        return;
-      }
-
-      outputSink = targetFile.openWrite();
-      final stream = _yt.videos.streamsClient.get(streamInfo);
-      final total = streamInfo.size.totalBytes;
-      task.totalBytes = total;
-      int count = 0;
-
-      await for (final data in stream) {
-        if (task.status == DownloadStatus.cancelled) {
-          await outputSink.flush();
-          await outputSink.close();
-          if (await targetFile.exists()) {
-            await targetFile.delete();
-          }
+        if (await targetFile.exists() && await targetFile.length() > 50000) {
+          task.savedFilePath = filePath;
+          task.progress = 1.0;
+          task.status = DownloadStatus.completed;
           _activeCount--;
+          _createAudioEntry(task, filePath);
           _notify();
           _processQueue();
           return;
         }
 
-        count += data.length;
-        task.downloadedBytes = count;
-        task.progress = total > 0 ? (count / total).clamp(0.0, 1.0) : 0.0;
-        outputSink.add(data);
-        _notify();
+        outputSink = targetFile.openWrite();
+        final request = http.Request('GET', Uri.parse(task.url));
+        final response = await http.Client().send(request);
+        final total = response.contentLength ?? 0;
+        task.totalBytes = total;
+        int count = 0;
+
+        await for (final data in response.stream) {
+          if (task.status == DownloadStatus.cancelled) {
+            await outputSink.flush();
+            await outputSink.close();
+            if (await targetFile.exists()) {
+              await targetFile.delete();
+            }
+            _activeCount--;
+            _notify();
+            _processQueue();
+            return;
+          }
+
+          count += data.length;
+          task.downloadedBytes = count;
+          task.progress = total > 0 ? (count / total).clamp(0.0, 1.0) : 0.0;
+          outputSink.add(data);
+          _notify();
+        }
+
+        await outputSink.flush();
+        await outputSink.close();
+
+        task.savedFilePath = filePath;
+        task.progress = 1.0;
+        task.status = DownloadStatus.completed;
+
+        _createAudioEntry(task, filePath);
+      } else {
+        // YouTube stream download
+        final manifest = await _yt.videos.streamsClient.getManifest(
+          VideoId(task.id),
+        );
+        final audioStreams = manifest.audioOnly.sortByBitrate();
+        if (audioStreams.isEmpty) {
+          throw Exception('No audio stream available for this video');
+        }
+
+        final streamInfo = audioStreams.last; // Highest bitrate audio
+        final ext = streamInfo.container.name;
+        final filePath = '${saveDir.path}/$safeTitle.$ext';
+        targetFile = File(filePath);
+
+        // Skip download if already exists with full size
+        if (await targetFile.exists() &&
+            await targetFile.length() >= streamInfo.size.totalBytes) {
+          task.savedFilePath = filePath;
+          task.progress = 1.0;
+          task.status = DownloadStatus.completed;
+          _activeCount--;
+
+          _createAudioEntry(task, filePath);
+          _notify();
+          _processQueue();
+          return;
+        }
+
+        outputSink = targetFile.openWrite();
+        final stream = _yt.videos.streamsClient.get(streamInfo);
+        final total = streamInfo.size.totalBytes;
+        task.totalBytes = total;
+        int count = 0;
+
+        await for (final data in stream) {
+          if (task.status == DownloadStatus.cancelled) {
+            await outputSink.flush();
+            await outputSink.close();
+            if (await targetFile.exists()) {
+              await targetFile.delete();
+            }
+            _activeCount--;
+            _notify();
+            _processQueue();
+            return;
+          }
+
+          count += data.length;
+          task.downloadedBytes = count;
+          task.progress = total > 0 ? (count / total).clamp(0.0, 1.0) : 0.0;
+          outputSink.add(data);
+          _notify();
+        }
+
+        await outputSink.flush();
+        await outputSink.close();
+
+        task.savedFilePath = filePath;
+        task.progress = 1.0;
+        task.status = DownloadStatus.completed;
+
+        _createAudioEntry(task, filePath);
       }
-
-      await outputSink.flush();
-      await outputSink.close();
-
-      task.savedFilePath = filePath;
-      task.progress = 1.0;
-      task.status = DownloadStatus.completed;
-
-      _createAudioEntry(task, filePath);
     } catch (e) {
       debugPrint('Download error for ${task.title}: $e');
       task.status = DownloadStatus.failed;
