@@ -1,7 +1,6 @@
 import 'dart:async';
 import 'dart:io';
 import 'package:flutter/material.dart';
-import 'package:http/http.dart' as http;
 import 'package:just_audio/just_audio.dart';
 import 'package:path_provider/path_provider.dart';
 
@@ -31,16 +30,13 @@ class SurahSelectionScreen extends StatefulWidget {
 
 class _SurahSelectionScreenState extends State<SurahSelectionScreen> {
   String _searchQuery = "";
-  bool _isDownloading = false;
-  double _downloadProgress = 0.0;
-  String? _downloadingSurahId;
   String? _expandedSurahId;
   String? _localDirPath;
 
   final AudioPlayer _player = AudioPlayer();
   bool _isPlayingPreview = false;
   StreamSubscription? _playerStateSubscription;
-  StreamSubscription<List<int>>? _downloadSubscription;
+  StreamSubscription? _downloadSubscription;
 
   @override
   void initState() {
@@ -63,6 +59,12 @@ class _SurahSelectionScreenState extends State<SurahSelectionScreen> {
         });
       }
     });
+
+    _downloadSubscription = DownloadService.instance.tasksStream.listen((_) {
+      if (mounted) {
+        setState(() {});
+      }
+    });
   }
 
   Future<void> _initDir() async {
@@ -80,6 +82,29 @@ class _SurahSelectionScreenState extends State<SurahSelectionScreen> {
     _downloadSubscription?.cancel();
     _player.dispose();
     super.dispose();
+  }
+
+  File? _getSurahLocalFile(dynamic surah) {
+    if (_localDirPath == null) return null;
+    final legacyFilename = "${widget.reciterName}_${surah['name']}.mp3"
+        .replaceAll(RegExp(r'[\\/:*?"<>|]'), '');
+    final f1 = File('$_localDirPath/$legacyFilename');
+    if (f1.existsSync()) return f1;
+
+    final safeTitle = DownloadService.instance.sanitizeFilename(
+      "${widget.reciterName} - ${surah['name']}",
+    );
+    final safeFolder = DownloadService.instance.sanitizeFilename(
+      widget.reciterName,
+    );
+
+    final f2 = File('$_localDirPath/audios/$safeFolder/$safeTitle.mp3');
+    if (f2.existsSync()) return f2;
+
+    final f3 = File('$_localDirPath/audios/$safeTitle.mp3');
+    if (f3.existsSync()) return f3;
+
+    return null;
   }
 
   Future<void> _previewAudio(String pathOrUrl) async {
@@ -111,13 +136,8 @@ class _SurahSelectionScreenState extends State<SurahSelectionScreen> {
   }
 
   Future<void> _deleteSurah(dynamic surah) async {
-    if (_localDirPath == null) return;
-    final filename = "${widget.reciterName}_${surah['name']}.mp3".replaceAll(
-      RegExp(r'[\\/:*?"<>|]'),
-      '',
-    );
-    final file = File('$_localDirPath/$filename');
-    if (file.existsSync()) {
+    final file = _getSurahLocalFile(surah);
+    if (file != null && file.existsSync()) {
       try {
         file.deleteSync();
         if (mounted) setState(() {});
@@ -127,82 +147,26 @@ class _SurahSelectionScreenState extends State<SurahSelectionScreen> {
             backgroundColor: Colors.redAccent,
           ),
         );
-      } catch (_) {
-        // Ignore snackbar errors if widget unmounted
-      }
+      } catch (_) {}
     }
   }
 
   Future<void> _downloadSurah(dynamic surah, String finalUrl) async {
-    setState(() {
-      _isDownloading = true;
-      _downloadingSurahId = surah['id'].toString();
-    });
+    await DownloadService.instance.enqueueSingleSurahDownload(
+      reciterName: widget.reciterName,
+      surah: surah,
+      audioUrl: finalUrl,
+    );
 
-    try {
-      final request = http.Request('GET', Uri.parse(finalUrl));
-      final response = await http.Client().send(request);
-      final total = response.contentLength ?? 0;
-
-      int downloadedBytes = 0;
-      List<int> bytes = [];
-
-      response.stream.listen(
-        (chunk) {
-          bytes.addAll(chunk);
-          downloadedBytes += chunk.length;
-          if (total != 0) {
-            setState(() {
-              _downloadProgress = downloadedBytes / total;
-            });
-          }
-        },
-        onDone: () async {
-          final dir = await getApplicationDocumentsDirectory();
-          final filename = "${widget.reciterName}_${surah['name']}.mp3"
-              .replaceAll(RegExp(r'[\\/:*?"<>|]'), '');
-          final file = File('${dir.path}/$filename');
-          await file.writeAsBytes(bytes);
-
-          final displayName = "${widget.reciterName} - ${surah['name']}";
-
-          if (mounted) {
-            setState(() {
-              _isDownloading = false;
-              _downloadingSurahId = null;
-            });
-            ScaffoldMessenger.of(context).showSnackBar(
-              const SnackBar(
-                content: Text("Download Complete"),
-                backgroundColor: AppColors.primary,
-              ),
-            );
-
-            // Auto-switch main window/library entry from stream to offline file.
-            Navigator.pop(context, {
-              'path': file.path,
-              'name': displayName,
-              'sourceReciterName': widget.reciterName,
-              'sourceSurahName': surah['name']?.toString(),
-              'sourceSurahId': surah['id']?.toString(),
-              'replaceStreamPath': finalUrl,
-            });
-          }
-        },
-        onError: (e) {
-          setState(() {
-            _isDownloading = false;
-            _downloadingSurahId = null;
-          });
-        },
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text("Added to download queue: ${surah['name']}"),
+          backgroundColor: AppColors.primary,
+          duration: const Duration(seconds: 2),
+        ),
       );
-    } catch (e) {
-      if (mounted) {
-        setState(() {
-          _isDownloading = false;
-          _downloadingSurahId = null;
-        });
-      }
+      setState(() {});
     }
   }
 
@@ -222,15 +186,15 @@ class _SurahSelectionScreenState extends State<SurahSelectionScreen> {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Text(
-              'Download all ${allAvailableSuwar.length} suwar by ${widget.reciterName} into a dedicated folder in your audio library.',
-              style: const TextStyle(color: Colors.white70, fontSize: 13),
+              'Download all ${allAvailableSuwar.length} suwar of reciter "${widget.reciterName}" as a folder into your library.',
+              style: const TextStyle(color: Colors.grey, fontSize: 13),
             ),
             const SizedBox(height: 16),
             TextField(
               controller: folderController,
               style: const TextStyle(color: Colors.white),
               decoration: const InputDecoration(
-                labelText: 'Folder Name / Reciter',
+                labelText: 'Folder Name',
                 labelStyle: TextStyle(color: Colors.grey),
                 enabledBorder: UnderlineInputBorder(
                   borderSide: BorderSide(color: Colors.grey),
@@ -247,20 +211,17 @@ class _SurahSelectionScreenState extends State<SurahSelectionScreen> {
             child: const Text('CANCEL', style: TextStyle(color: Colors.grey)),
             onPressed: () => Navigator.pop(context),
           ),
-          TextButton(
-            child: const Text(
-              'DOWNLOAD ALL',
-              style: TextStyle(
-                color: AppColors.primary,
-                fontWeight: FontWeight.bold,
-              ),
+          ElevatedButton(
+            style: ElevatedButton.styleFrom(
+              backgroundColor: AppColors.primary,
+              foregroundColor: Colors.black,
             ),
             onPressed: () {
               final folder = folderController.text.trim();
               if (folder.isNotEmpty) {
                 DownloadService.instance.enqueueQuranReciterDownload(
                   reciterName: widget.reciterName,
-                  serverUrl: widget.moshaf['server'].toString(),
+                  serverUrl: widget.moshaf['server'],
                   suwarToDownload: allAvailableSuwar,
                   customFolderName: folder,
                 );
@@ -268,25 +229,14 @@ class _SurahSelectionScreenState extends State<SurahSelectionScreen> {
                 ScaffoldMessenger.of(context).showSnackBar(
                   SnackBar(
                     content: Text(
-                      'Queued ${allAvailableSuwar.length} suwar into folder "$folder"',
+                      'Queued ${allAvailableSuwar.length} suwar in folder "$folder"',
                     ),
                     backgroundColor: AppColors.primary,
-                    action: SnackBarAction(
-                      label: 'VIEW QUEUE',
-                      textColor: Colors.black,
-                      onPressed: () {
-                        Navigator.push(
-                          context,
-                          MaterialPageRoute(
-                            builder: (_) => const YoutubeDownloadScreen(),
-                          ),
-                        );
-                      },
-                    ),
                   ),
                 );
               }
             },
+            child: const Text('DOWNLOAD ALL'),
           ),
         ],
       ),
@@ -295,7 +245,11 @@ class _SurahSelectionScreenState extends State<SurahSelectionScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final availableSurahs = widget.moshaf['surah_list'].toString().split(',');
+    final String surasListStr = widget.moshaf['surah_list']?.toString() ?? "";
+    final List<String> availableSurahs = surasListStr.isNotEmpty
+        ? surasListStr.split(',')
+        : [];
+
     final filteredSuwar = widget.suwarList.where((s) {
       final name = s['name'].toString().toLowerCase();
       return availableSurahs.contains(s['id'].toString()) &&
@@ -316,6 +270,18 @@ class _SurahSelectionScreenState extends State<SurahSelectionScreen> {
           style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 18),
         ),
         actions: [
+          IconButton(
+            icon: const Icon(Icons.download_rounded, color: Colors.white70),
+            tooltip: 'View Download Queue',
+            onPressed: () {
+              Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (context) => const YoutubeDownloadScreen(),
+                ),
+              );
+            },
+          ),
           IconButton(
             icon: const Icon(
               Icons.download_for_offline_rounded,
@@ -368,15 +334,21 @@ class _SurahSelectionScreenState extends State<SurahSelectionScreen> {
                   final surahIdStr = s['id'].toString().padLeft(3, '0');
                   final url = "${widget.moshaf['server']}$surahIdStr.mp3";
 
-                  final filename = "${widget.reciterName}_${s['name']}.mp3"
-                      .replaceAll(RegExp(r'[\\/:*?"<>|]'), '');
-                  final bool fileExists =
-                      _localDirPath != null &&
-                      File('$_localDirPath/$filename').existsSync();
+                  final localFile = _getSurahLocalFile(s);
+                  final bool fileExists = localFile != null;
+                  final String resolvedAudioPath = localFile?.path ?? url;
+
+                  final taskId = "quran_${widget.reciterName}_${s['id']}";
+                  final taskIndex = DownloadService.instance.tasks.indexWhere(
+                    (t) => t.id == taskId,
+                  );
+                  final downloadTask = taskIndex != -1
+                      ? DownloadService.instance.tasks[taskIndex]
+                      : null;
 
                   final isThisDownloading =
-                      _isDownloading &&
-                      _downloadingSurahId == s['id'].toString();
+                      downloadTask != null && downloadTask.isActive;
+                  final double downloadProgress = downloadTask?.progress ?? 0.0;
                   final isExpanded = _expandedSurahId == s['id'].toString();
 
                   return Column(
@@ -441,11 +413,8 @@ class _SurahSelectionScreenState extends State<SurahSelectionScreen> {
                               Row(
                                 children: [
                                   GestureDetector(
-                                    onTap: () => _previewAudio(
-                                      fileExists
-                                          ? '$_localDirPath/$filename'
-                                          : url,
-                                    ),
+                                    onTap: () =>
+                                        _previewAudio(resolvedAudioPath),
                                     child: Container(
                                       width: 40,
                                       height: 40,
@@ -532,9 +501,7 @@ class _SurahSelectionScreenState extends State<SurahSelectionScreen> {
                                       ),
                                       onPressed: () => _useAudioDirectly(
                                         s,
-                                        fileExists
-                                            ? '$_localDirPath/$filename'
-                                            : url,
+                                        resolvedAudioPath,
                                       ),
                                       child: Text(
                                         fileExists
@@ -551,7 +518,9 @@ class _SurahSelectionScreenState extends State<SurahSelectionScreen> {
                                         width: 24,
                                         height: 24,
                                         child: CircularProgressIndicator(
-                                          value: _downloadProgress,
+                                          value: downloadProgress > 0
+                                              ? downloadProgress
+                                              : null,
                                           color: AppColors.primary,
                                           strokeWidth: 3,
                                         ),

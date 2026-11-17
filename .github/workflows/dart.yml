@@ -51,18 +51,19 @@ jobs:
         with:
           repo_token: ${{ secrets.GITHUB_TOKEN }}
           file: build/ios/iphoneos/FlutterIpaExport.ipa
-          asset_name: MP360-v4.0.ipa
-          tag: v4.0
-          release_name: "MP360 Release v4.0"
+          asset_name: MP360-${{ github.ref_type == 'tag' && github.ref_name || 'v4.0' }}.ipa
+          tag: ${{ github.ref_type == 'tag' && github.ref_name || 'v4.0' }}
+          release_name: "MP360 Release ${{ github.ref_type == 'tag' && github.ref_name || 'v4.0' }}"
           overwrite: true
           body: |
-            ### MP360 v4.0 Release
+            ### MP360 Release
             - Persistent background playback with media notification (Android & iOS).
             - Full Arabic and English localization with instant language switch.
             - Android Home Screen audio player widget.
-            - YouTube single audio & full playlist folder downloader.
+            - In-app YouTube single audio & full playlist folder downloader.
             - Direct full Quran reciter/imam suwar folder download.
-            - Reactive download queue and progress notifications.
+            - Single surah download integrated into the reactive download queue.
+            - Reactive download queue and status bar progress notifications.
 
   build-android:
     name: 🤖 Android APK Build & Release
@@ -95,15 +96,16 @@ jobs:
         with:
           repo_token: ${{ secrets.GITHUB_TOKEN }}
           file: build/app/outputs/flutter-apk/app-release.apk
-          asset_name: MP360-v4.0.apk
-          tag: v4.0
-          release_name: "MP360 Release v4.0"
+          asset_name: MP360-${{ github.ref_type == 'tag' && github.ref_name || 'v4.0' }}.apk
+          tag: ${{ github.ref_type == 'tag' && github.ref_name || 'v4.0' }}
+          release_name: "MP360 Release ${{ github.ref_type == 'tag' && github.ref_name || 'v4.0' }}"
           overwrite: true
           body: |
-            ### MP360 v4.0 Release
+            ### MP360 Release
             - Persistent background playback with media notification (Android & iOS).
             - Full Arabic and English localization with instant language switch.
             - Android Home Screen audio player widget.
-            - YouTube single audio & full playlist folder downloader.
+            - In-app YouTube single audio & full playlist folder downloader.
             - Direct full Quran reciter/imam suwar folder download.
-            - Reactive download queue and progress notifications.
+            - Single surah download integrated into the reactive download queue.
+            - Reactive download queue and status bar progress notifications.

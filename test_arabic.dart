@@ -1,3 +1,0 @@
-void main() {
-  print('???????'.toLowerCase().contains('??'.toLowerCase()));
-}

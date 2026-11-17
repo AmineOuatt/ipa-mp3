@@ -21,7 +21,6 @@ class DownloadService {
       StreamController<List<DownloadTask>>.broadcast();
 
   final int _maxConcurrentDownloads = 2;
-  int _activeCount = 0;
 
   void Function(SavedAudioEntry entry)? onAudioDownloaded;
   void Function(AudioGroup group)? onGroupCreated;
@@ -29,36 +28,43 @@ class DownloadService {
   Stream<List<DownloadTask>> get tasksStream => _tasksController.stream;
   List<DownloadTask> get tasks => List.unmodifiable(_tasks);
 
+  int get activeCount =>
+      _tasks.where((t) => t.status == DownloadStatus.downloading).length;
+
   void _notify() {
     _tasksController.add(List.unmodifiable(_tasks));
     _updateProgressNotification();
   }
 
   void _updateProgressNotification() {
-    final active = _tasks.where((t) => t.isActive).toList();
-    if (active.isEmpty) {
-      NotificationService().cancelDownloadNotification();
-      return;
+    try {
+      final active = _tasks.where((t) => t.isActive).toList();
+      if (active.isEmpty) {
+        NotificationService().cancelDownloadNotification();
+        return;
+      }
+
+      final totalActive = active.length;
+      final completedCount = _tasks.where((t) => t.isCompleted).length;
+      final totalCount = _tasks.length;
+
+      double avgProgress = 0.0;
+      if (totalActive > 0) {
+        avgProgress =
+            active.map((t) => t.progress).reduce((a, b) => a + b) / totalActive;
+      }
+
+      final percent = (avgProgress * 100).toInt();
+
+      NotificationService().showDownloadNotification(
+        title: 'Downloading audio ($completedCount/$totalCount)',
+        subtitle: '$percent% - ${active.first.title}',
+        progress: percent,
+        maxProgress: 100,
+      );
+    } catch (e) {
+      debugPrint('Error updating download notification: $e');
     }
-
-    final totalActive = active.length;
-    final completedCount = _tasks.where((t) => t.isCompleted).length;
-    final totalCount = _tasks.length;
-
-    double avgProgress = 0.0;
-    if (totalActive > 0) {
-      avgProgress =
-          active.map((t) => t.progress).reduce((a, b) => a + b) / totalActive;
-    }
-
-    final percent = (avgProgress * 100).toInt();
-
-    NotificationService().showDownloadNotification(
-      title: 'Downloading audio ($completedCount/$totalCount)',
-      subtitle: '$percent% - ${active.first.title}',
-      progress: percent,
-      maxProgress: 100,
-    );
   }
 
   Future<Video> fetchVideoMetadata(String url) async {
@@ -92,8 +98,15 @@ class DownloadService {
     String? targetGroupId,
     String? groupName,
   }) async {
-    final existing = _tasks.indexWhere((t) => t.id == video.id.value);
-    if (existing != -1 && _tasks[existing].isActive) {
+    final existingIndex = _tasks.indexWhere((t) => t.id == video.id.value);
+    if (existingIndex != -1) {
+      final existing = _tasks[existingIndex];
+      if (existing.isActive) return;
+      existing.status = DownloadStatus.pending;
+      existing.progress = 0.0;
+      existing.error = null;
+      _notify();
+      _processQueue();
       return;
     }
 
@@ -113,6 +126,44 @@ class DownloadService {
     _processQueue();
   }
 
+  Future<void> enqueueSingleSurahDownload({
+    required String reciterName,
+    required dynamic surah,
+    required String audioUrl,
+    String? customFolderName,
+  }) async {
+    final surahId = surah['id'].toString();
+    final surahName = surah['name'].toString();
+    final taskId = "quran_${reciterName}_$surahId";
+    final title = "$reciterName - $surahName";
+    final folder = customFolderName ?? reciterName;
+
+    final existingIndex = _tasks.indexWhere((t) => t.id == taskId);
+    if (existingIndex != -1) {
+      final existing = _tasks[existingIndex];
+      if (existing.isActive) return;
+      existing.status = DownloadStatus.pending;
+      existing.progress = 0.0;
+      existing.error = null;
+      _notify();
+      _processQueue();
+      return;
+    }
+
+    final task = DownloadTask(
+      id: taskId,
+      url: audioUrl,
+      title: title,
+      author: reciterName,
+      targetGroupId: null,
+      groupName: folder,
+    );
+
+    _tasks.add(task);
+    _notify();
+    _processQueue();
+  }
+
   Future<void> enqueuePlaylistDownload({
     required Playlist playlist,
     required List<Video> videos,
@@ -123,6 +174,16 @@ class DownloadService {
     onGroupCreated?.call(group);
 
     for (final video in videos) {
+      final existingIndex = _tasks.indexWhere((t) => t.id == video.id.value);
+      if (existingIndex != -1) {
+        final existing = _tasks[existingIndex];
+        if (existing.isActive || existing.isCompleted) continue;
+        existing.status = DownloadStatus.pending;
+        existing.progress = 0.0;
+        existing.error = null;
+        continue;
+      }
+
       final task = DownloadTask(
         id: video.id.value,
         url: video.url,
@@ -157,10 +218,14 @@ class DownloadService {
       final title = "$reciterName - ${s['name']}";
       final taskId = "quran_${reciterName}_${s['id']}";
 
-      // Avoid adding if already completed or active
-      final existing = _tasks.indexWhere((t) => t.id == taskId);
-      if (existing != -1 &&
-          (_tasks[existing].isActive || _tasks[existing].isCompleted)) {
+      // Avoid adding if already active or completed
+      final existingIndex = _tasks.indexWhere((t) => t.id == taskId);
+      if (existingIndex != -1) {
+        final existing = _tasks[existingIndex];
+        if (existing.isActive || existing.isCompleted) continue;
+        existing.status = DownloadStatus.pending;
+        existing.progress = 0.0;
+        existing.error = null;
         continue;
       }
 
@@ -180,18 +245,23 @@ class DownloadService {
   }
 
   void _processQueue() {
-    if (_activeCount >= _maxConcurrentDownloads) return;
+    final downloadingCount = activeCount;
+    if (downloadingCount >= _maxConcurrentDownloads) return;
 
-    final pending = _tasks.where((t) => t.status == DownloadStatus.pending);
+    final pending = _tasks
+        .where((t) => t.status == DownloadStatus.pending)
+        .toList();
+    int slotsAvailable = _maxConcurrentDownloads - downloadingCount;
+
     for (final task in pending) {
-      if (_activeCount >= _maxConcurrentDownloads) break;
+      if (slotsAvailable <= 0) break;
+      slotsAvailable--;
       _startDownload(task);
     }
   }
 
   Future<void> _startDownload(DownloadTask task) async {
     task.status = DownloadStatus.downloading;
-    _activeCount++;
     _notify();
 
     IOSink? outputSink;
@@ -226,19 +296,21 @@ class DownloadService {
           task.savedFilePath = filePath;
           task.progress = 1.0;
           task.status = DownloadStatus.completed;
-          _activeCount--;
           _createAudioEntry(task, filePath);
-          _notify();
-          _processQueue();
           return;
         }
 
         outputSink = targetFile.openWrite();
         final request = http.Request('GET', Uri.parse(task.url));
         final response = await http.Client().send(request);
+        if (response.statusCode >= 400) {
+          throw Exception('HTTP error ${response.statusCode}');
+        }
         final total = response.contentLength ?? 0;
         task.totalBytes = total;
         int count = 0;
+        int lastNotifiedMs = 0;
+        double lastNotifiedProgress = 0.0;
 
         await for (final data in response.stream) {
           if (task.status == DownloadStatus.cancelled) {
@@ -247,9 +319,6 @@ class DownloadService {
             if (await targetFile.exists()) {
               await targetFile.delete();
             }
-            _activeCount--;
-            _notify();
-            _processQueue();
             return;
           }
 
@@ -257,7 +326,14 @@ class DownloadService {
           task.downloadedBytes = count;
           task.progress = total > 0 ? (count / total).clamp(0.0, 1.0) : 0.0;
           outputSink.add(data);
-          _notify();
+
+          final nowMs = DateTime.now().millisecondsSinceEpoch;
+          if ((task.progress - lastNotifiedProgress).abs() >= 0.02 ||
+              (nowMs - lastNotifiedMs) >= 400) {
+            lastNotifiedProgress = task.progress;
+            lastNotifiedMs = nowMs;
+            _notify();
+          }
         }
 
         await outputSink.flush();
@@ -270,38 +346,65 @@ class DownloadService {
         _createAudioEntry(task, filePath);
       } else {
         // YouTube stream download
-        final manifest = await _yt.videos.streamsClient.getManifest(
-          VideoId(task.id),
-        );
-        final audioStreams = manifest.audioOnly.sortByBitrate();
-        if (audioStreams.isEmpty) {
-          throw Exception('No audio stream available for this video');
+        VideoId videoId;
+        try {
+          videoId = VideoId(task.id);
+        } catch (_) {
+          videoId = VideoId(task.url);
         }
 
-        final streamInfo = audioStreams.last; // Highest bitrate audio
-        final ext = streamInfo.container.name;
+        final manifest = await _yt.videos.streamsClient.getManifest(videoId);
+
+        // Find best audio stream (prefer mp4/m4a for iOS & Android universal support)
+        final mp4Audios = manifest.audioOnly
+            .where((s) => s.container.name.toLowerCase() == 'mp4')
+            .sortByBitrate()
+            .toList();
+
+        StreamInfo? selectedStream;
+        String ext = 'm4a';
+
+        if (mp4Audios.isNotEmpty) {
+          selectedStream = mp4Audios.first;
+          ext = 'm4a';
+        } else {
+          final allAudios = manifest.audioOnly.sortByBitrate().toList();
+          if (allAudios.isNotEmpty) {
+            selectedStream = allAudios.first;
+            ext = selectedStream.container.name.toLowerCase() == 'mp4'
+                ? 'm4a'
+                : selectedStream.container.name;
+          } else if (manifest.muxed.isNotEmpty) {
+            selectedStream = manifest.muxed.sortByBitrate().first;
+            ext = 'mp4';
+          }
+        }
+
+        if (selectedStream == null) {
+          throw Exception('No playable audio stream available for this video');
+        }
+
         final filePath = '${saveDir.path}/$safeTitle.$ext';
         targetFile = File(filePath);
 
         // Skip download if already exists with full size
         if (await targetFile.exists() &&
-            await targetFile.length() >= streamInfo.size.totalBytes) {
+            await targetFile.length() >= selectedStream.size.totalBytes) {
           task.savedFilePath = filePath;
           task.progress = 1.0;
           task.status = DownloadStatus.completed;
-          _activeCount--;
 
           _createAudioEntry(task, filePath);
-          _notify();
-          _processQueue();
           return;
         }
 
         outputSink = targetFile.openWrite();
-        final stream = _yt.videos.streamsClient.get(streamInfo);
-        final total = streamInfo.size.totalBytes;
+        final stream = _yt.videos.streamsClient.get(selectedStream);
+        final total = selectedStream.size.totalBytes;
         task.totalBytes = total;
         int count = 0;
+        int lastNotifiedMs = 0;
+        double lastNotifiedProgress = 0.0;
 
         await for (final data in stream) {
           if (task.status == DownloadStatus.cancelled) {
@@ -310,9 +413,6 @@ class DownloadService {
             if (await targetFile.exists()) {
               await targetFile.delete();
             }
-            _activeCount--;
-            _notify();
-            _processQueue();
             return;
           }
 
@@ -320,7 +420,14 @@ class DownloadService {
           task.downloadedBytes = count;
           task.progress = total > 0 ? (count / total).clamp(0.0, 1.0) : 0.0;
           outputSink.add(data);
-          _notify();
+
+          final nowMs = DateTime.now().millisecondsSinceEpoch;
+          if ((task.progress - lastNotifiedProgress).abs() >= 0.02 ||
+              (nowMs - lastNotifiedMs) >= 400) {
+            lastNotifiedProgress = task.progress;
+            lastNotifiedMs = nowMs;
+            _notify();
+          }
         }
 
         await outputSink.flush();
@@ -343,7 +450,6 @@ class DownloadService {
         }
       } catch (_) {}
     } finally {
-      _activeCount--;
       _notify();
       _processQueue();
     }

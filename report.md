@@ -5,18 +5,18 @@
 ### 1.1 Structural Refactoring (Feature-First)
 - **Monolith Decomposition**: Decomposed the original ~3,300-line monolithic `lib/main.dart` into a modular, feature-first architecture (`core/`, `models/`, `services/`, `features/player/`, `features/library/`, `features/quran/`, `features/downloads/`, `features/settings/`, `features/about/`).
 - **File Size Reduction**:
-  - `lib/main.dart`: Reduced from **3,285 lines** to **110 lines** (pure app bootstrap and dynamic locale management).
+  - `lib/main.dart`: Reduced from **3,285 lines** to **106 lines** (pure app bootstrap and dynamic locale management).
   - `lib/features/player/presentation/screens/audio_looper_screen.dart`: Reduced from ~2,200 lines to **1,060 lines** by extracting `library_panel.dart`, `group_dialogs.dart`, `waveform_painter.dart`, and `segment_player_screen.dart`.
 - **Domain Modeling**: Extracted type-safe models (`AudioGroup`, `LoopBookmark`, `SavedAudioEntry`, `DownloadTask`) with clear JSON serialization and state helpers.
-- **Service Layer**: Dedicated singletons for background audio (`AppAudioHandler`), notifications (`NotificationService`), home widget sync (`WidgetService`), and YouTube downloads (`DownloadService`).
+- **Service Layer**: Dedicated singletons for background audio (`AppAudioHandler`), notifications (`NotificationService`), home widget sync (`WidgetService`), and downloads (`DownloadService`).
 - **Code Cleanliness**: Eliminated dead code, unused imports, stray semicolons, and magic color constants (centralized in `AppColors`).
 
 ---
 
-## 2. Features Added
+## 2. Features Added & Enhancements
 
 1. **B1: Android Persistent Background Playback**
-   - **Root Cause**: Previously, `AudioService` was only initialized on iOS. On Android, the app lacked foreground service declarations, WAKE_LOCK, and media permissions, causing Android's Low Memory Killer (LMK) to kill audio within minutes when screen turned off.
+   - **Root Cause Fixed**: Previously, `AudioService` was only initialized on iOS. On Android, the app lacked foreground service declarations, `WAKE_LOCK`, and media permissions, causing Android's Low Memory Killer (LMK) to terminate audio within minutes when the screen turned off.
    - **Enhancement**: Added `FOREGROUND_SERVICE`, `FOREGROUND_SERVICE_MEDIA_PLAYBACK`, `WAKE_LOCK`, `POST_NOTIFICATIONS` in `AndroidManifest.xml`. Converted `MainActivity` to `AudioServiceActivity`. Added audio focus handling and `becomingNoisy` listeners (auto-pause on headphone disconnect).
 
 2. **B2: Arabic/English Localization & About Screen**
@@ -30,14 +30,17 @@
    - Real-time synchronization via `home_widget` and `WidgetService`.
    - Hardware/Media controls: Play/Pause, Next, and Previous buttons send broadcast intents directly to `audio_service`, controlling the real audio player even when the app is minimized.
 
-4. **B4: In-App YouTube Audio Download**
-   - Integrated `youtube_explode_dart`.
-   - Built `YoutubeDownloadScreen` with URL clipboard paste, link validation, and video metadata preview (thumbnail, title, author, duration).
-   - Downloads highest-bitrate audio stream directly into the app storage and adds it to the player library.
+4. **B4: In-App YouTube Audio Downloader (Fixed & Streamlined)**
+   - **Diagnosis & Fix**:
+     - Resolved stream selection bug where `sortByBitrate().last` was selecting the lowest-quality stream rather than the highest.
+     - Switched to preferring universally compatible `mp4/m4a` streams over `webm` for seamless playback across both Android and iOS audio players.
+     - Fixed `DownloadService` active count double-decrement bug that could cause downloads to stall.
+     - Added stream progress throttling (400ms / 2% delta) preventing notification spam over platform channels from freezing the download.
+   - Integrated clipboard auto-paste, instant link analysis, metadata preview, and background download to library.
 
 5. **B5: YouTube Playlist Download as Folder**
    - Detects playlist URLs, fetches all tracks, and prompts for a custom folder/sheikh name (with filename sanitization).
-   - Throttles parallel downloads (2–3 concurrent tasks) to avoid network throttling.
+   - Throttles parallel downloads (2 concurrent tasks) to avoid network throttling.
    - Automatically creates an `AudioGroup` in the library and assigns downloaded tracks to that group.
 
 6. **B6: Reactive Download Progress UI & Background Notifications**
@@ -48,7 +51,12 @@
 7. **B7: Direct Full Quran Reciter/Imam Folder Download**
    - When selecting any imam/reciter, download all available suwar directly into a dedicated library folder.
    - Available directly from `SurahSelectionScreen` (top action button) and from `QuranBrowserScreen` (reciter tile download icon).
-   - Prompts for a folder name (defaults to the reciter's name, editable), queues downloads with concurrency throttling, displays background progress notifications, and registers the folder in the Audio Library.
+   - Prompts for folder name (defaults to reciter name, editable), queues all tracks, and registers in Audio Library.
+
+8. **B8: Single Surah Download Queue Integration**
+   - Clicking download on an individual Surah now routes through `DownloadService.enqueueSingleSurahDownload`.
+   - Appears immediately in the global Download Queue (`YoutubeDownloadScreen`) and displays ongoing status bar progress notification.
+   - Interactive circular progress indicator right on the surah tile, transitioning to "Use Audio (Offline)" upon completion.
 
 ---
 
@@ -58,10 +66,6 @@
 | :--- | :--- | :--- |
 | **Dart Format** | 35 files formatted cleanly | Passed |
 | **Flutter Analyze** | 0 errors, 0 warnings | Clean |
-| **Debug APK** | `build/app/outputs/flutter-apk/app-debug.apk` (204 MB) | Built & Verified |
-| **Release APK** | `build/app/outputs/flutter-apk/app-release.apk` (57.2 MB) | Built & Verified |
-| **Emulator Test** | Installed & verified running on `emulator-5554` (API 37) | PID: 20947 |
-| **GitHub Push** | Branch `feature/mp360-upgrade` on `origin` | Up-to-date |
-
-*Note on iOS: Cross-platform code and configurations are 100% compatible. Generating the `.ipa` package requires compilation on macOS with Xcode.*
-
+| **Flutter Test** | All widget & unit tests passing | Passed |
+| **Release APK** | `build/app/outputs/flutter-apk/app-release.apk` (57.4 MB) | Built & Verified |
+| **GitHub Release** | GitHub Releases with APK (`.apk`) and iOS IPA (`.ipa`) assets | Automated via CI/CD |

@@ -149,7 +149,9 @@ class AppAudioHandler extends BaseAudioHandler with SeekHandler {
 }
 
 AppAudioHandler? appAudioHandler;
-late final AudioPlayer appPlayer;
+AudioPlayer? _appPlayer;
+AudioPlayer get appPlayer => _appPlayer ??= AudioPlayer();
+set appPlayer(AudioPlayer player) => _appPlayer = player;
 
 bool get useIosMediaControls => !kIsWeb && Platform.isIOS;
 bool get isAudioServiceSupported =>
