@@ -14,9 +14,11 @@ import 'package:shared_preferences/shared_preferences.dart';
 import '../../../../models/models.dart';
 import '../../../../services/audio_handler.dart';
 import '../../../../services/notification_service.dart';
+import '../../../../core/l10n/generated/app_localizations.dart';
 import '../../../library/presentation/widgets/group_dialogs.dart';
 import '../../../library/presentation/widgets/library_panel.dart';
 import '../../../quran/presentation/screens/quran_browser_screen.dart';
+import '../../../settings/presentation/screens/settings_screen.dart';
 import '../widgets/waveform_painter.dart';
 import 'segment_player_screen.dart';
 
@@ -1005,7 +1007,9 @@ class _AudioLooperScreenState extends State<AudioLooperScreen> {
             children: [
               Flexible(
                 child: Text(
-                  _currentEntry?.name ?? "No Audio Loaded",
+                  _currentEntry?.name ??
+                      (AppLocalizations.of(context)?.noAudioLoaded ??
+                          "No Audio Loaded"),
                   style: const TextStyle(
                     fontSize: 15,
                     fontWeight: FontWeight.w700,
@@ -1033,6 +1037,16 @@ class _AudioLooperScreenState extends State<AudioLooperScreen> {
           IconButton(
             icon: const Icon(Icons.file_upload, color: Color(0xFF1DB954)),
             onPressed: _importAudio,
+          ),
+          IconButton(
+            tooltip: "Settings",
+            icon: const Icon(Icons.settings_outlined, color: Colors.white70),
+            onPressed: () {
+              Navigator.push(
+                context,
+                MaterialPageRoute(builder: (_) => const SettingsScreen()),
+              );
+            },
           ),
         ],
       ),
