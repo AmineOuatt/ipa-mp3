@@ -2,12 +2,19 @@ name: Mobile-ipa-apk-build
 
 on:
   push:
-    branches: [ feature/mp360-upgrade, main ]
+    branches:
+      - main
+      - feature/mp360-upgrade
+    tags:
+      - 'v*'
   workflow_dispatch:
+
+permissions:
+  contents: write
 
 jobs:
   build-ios:
-    name: 🎉 iOS IPA Build
+    name: 🎉 iOS IPA Build & Release
     runs-on: macos-latest
     steps:
       - uses: actions/checkout@v4
@@ -39,8 +46,26 @@ jobs:
           name: MP360-iOS-IPA
           path: build/ios/iphoneos/FlutterIpaExport.ipa
 
+      - name: Upload IPA to GitHub Release
+        uses: svenstaro/upload-release-action@v2
+        with:
+          repo_token: ${{ secrets.GITHUB_TOKEN }}
+          file: build/ios/iphoneos/FlutterIpaExport.ipa
+          asset_name: MP360-v4.0.ipa
+          tag: v4.0
+          release_name: "MP360 Release v4.0"
+          overwrite: true
+          body: |
+            ### MP360 v4.0 Release
+            - Persistent background playback with media notification (Android & iOS).
+            - Full Arabic and English localization with instant language switch.
+            - Android Home Screen audio player widget.
+            - YouTube single audio & full playlist folder downloader.
+            - Direct full Quran reciter/imam suwar folder download.
+            - Reactive download queue and progress notifications.
+
   build-android:
-    name: 🤖 Android APK Build
+    name: 🤖 Android APK Build & Release
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -64,3 +89,21 @@ jobs:
         with:
           name: MP360-Android-Release-APK
           path: build/app/outputs/flutter-apk/app-release.apk
+
+      - name: Upload APK to GitHub Release
+        uses: svenstaro/upload-release-action@v2
+        with:
+          repo_token: ${{ secrets.GITHUB_TOKEN }}
+          file: build/app/outputs/flutter-apk/app-release.apk
+          asset_name: MP360-v4.0.apk
+          tag: v4.0
+          release_name: "MP360 Release v4.0"
+          overwrite: true
+          body: |
+            ### MP360 v4.0 Release
+            - Persistent background playback with media notification (Android & iOS).
+            - Full Arabic and English localization with instant language switch.
+            - Android Home Screen audio player widget.
+            - YouTube single audio & full playlist folder downloader.
+            - Direct full Quran reciter/imam suwar folder download.
+            - Reactive download queue and progress notifications.
