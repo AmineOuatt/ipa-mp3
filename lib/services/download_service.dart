@@ -369,17 +369,25 @@ class DownloadService {
         try {
           manifest = await _yt.videos.streamsClient.getManifest(
             videoId,
-            ytClients: [YoutubeApiClient.androidVr, YoutubeApiClient.ios],
+            ytClients: [YoutubeApiClient.android, YoutubeApiClient.ios],
             requireWatchPage: false,
           );
         } catch (_) {
           try {
             manifest = await _yt.videos.streamsClient.getManifest(
               videoId,
+              ytClients: [YoutubeApiClient.androidSdkless],
               requireWatchPage: false,
             );
           } catch (_) {
-            manifest = await _yt.videos.streamsClient.getManifest(videoId);
+            try {
+              manifest = await _yt.videos.streamsClient.getManifest(
+                videoId,
+                requireWatchPage: false,
+              );
+            } catch (_) {
+              manifest = await _yt.videos.streamsClient.getManifest(videoId);
+            }
           }
         }
 
@@ -388,31 +396,43 @@ class DownloadService {
         }
 
         // 2. Prioritize candidate streams:
-        // Priority A: Audio-only MP4/M4A (highest bitrate)
-        // Priority B: Audio-only WebM (highest bitrate)
-        // Priority C: Muxed MP4 (e.g. tag 18 / 360p mp4, unthrottled and plays audio natively)
-        // Priority D: Any remaining muxed stream
+        // Priority 1: Muxed MP4 (e.g. tag 18 / 360p mp4, unthrottled, instant CDN response, bypasses bot checks)
+        // Priority 2: Audio-only MP4/M4A (highest bitrate)
+        // Priority 3: Audio-only WebM (highest bitrate)
+        // Priority 4: Any other muxed stream
         final candidates = <StreamInfo>[];
-        candidates.addAll(
-          manifest.audioOnly
-              .where((s) => s.container.name.toLowerCase() == 'mp4')
-              .sortByBitrate(),
-        );
-        candidates.addAll(
-          manifest.audioOnly
-              .where((s) => s.container.name.toLowerCase() != 'mp4')
-              .sortByBitrate(),
-        );
-        candidates.addAll(
-          manifest.muxed
-              .where((s) => s.container.name.toLowerCase() == 'mp4')
-              .sortByBitrate(),
-        );
-        candidates.addAll(
-          manifest.muxed
-              .where((s) => s.container.name.toLowerCase() != 'mp4')
-              .sortByBitrate(),
-        );
+
+        final bestMuxedMp4 = manifest.muxed
+            .where((s) => s.container.name.toLowerCase() == 'mp4')
+            .sortByBitrate()
+            .firstOrNull;
+        if (bestMuxedMp4 != null) {
+          candidates.add(bestMuxedMp4);
+        }
+
+        final bestAudioMp4 = manifest.audioOnly
+            .where((s) => s.container.name.toLowerCase() == 'mp4')
+            .sortByBitrate()
+            .firstOrNull;
+        if (bestAudioMp4 != null) {
+          candidates.add(bestAudioMp4);
+        }
+
+        final bestAudioWebm = manifest.audioOnly
+            .where((s) => s.container.name.toLowerCase() != 'mp4')
+            .sortByBitrate()
+            .firstOrNull;
+        if (bestAudioWebm != null) {
+          candidates.add(bestAudioWebm);
+        }
+
+        final otherMuxed = manifest.muxed
+            .where((s) => s != bestMuxedMp4)
+            .sortByBitrate()
+            .firstOrNull;
+        if (otherMuxed != null) {
+          candidates.add(otherMuxed);
+        }
 
         if (candidates.isEmpty) {
           throw Exception(
@@ -427,8 +447,11 @@ class DownloadService {
           if (task.status == DownloadStatus.cancelled) return;
 
           final candidate = candidates[i];
+          final isMuxed = candidate is MuxedStreamInfo;
           final isMp4 = candidate.container.name.toLowerCase() == 'mp4';
-          final ext = isMp4 ? 'm4a' : candidate.container.name;
+          final ext = isMuxed
+              ? 'mp4'
+              : (isMp4 ? 'm4a' : candidate.container.name);
           final filePath = '${saveDir.path}/$safeTitle.$ext';
           targetFile = File(filePath);
           partFile = File('$filePath.part');
@@ -497,9 +520,9 @@ class DownloadService {
               cancelOnError: true,
             );
 
-            // 15-second timeout waiting for first chunk
+            // 3.5-second timeout waiting for first chunk
             final gotFirstChunk = await firstChunkCompleter.future.timeout(
-              const Duration(seconds: 15),
+              const Duration(milliseconds: 3500),
               onTimeout: () => false,
             );
 
