@@ -333,8 +333,9 @@ class _YoutubeDownloadScreenState extends State<YoutubeDownloadScreen> {
                   builder: (context, snapshot) {
                     final tasks = snapshot.data ?? [];
                     final hasActive = tasks.any((t) => t.isActive);
-                    final hasStopped =
-                        tasks.any((t) => t.isStopped || t.isFailed);
+                    final hasStopped = tasks.any(
+                      (t) => t.isStopped || t.isFailed,
+                    );
                     final hasCompleted = tasks.any((t) => t.isCompleted);
 
                     return Row(
@@ -367,8 +368,10 @@ class _YoutubeDownloadScreenState extends State<YoutubeDownloadScreen> {
                             onPressed: () => _downloadService.clearCompleted(),
                             child: const Text(
                               'Clear',
-                              style:
-                                  TextStyle(color: Colors.grey, fontSize: 12),
+                              style: TextStyle(
+                                color: Colors.grey,
+                                fontSize: 12,
+                              ),
                             ),
                           ),
                       ],

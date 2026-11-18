@@ -192,12 +192,15 @@ class DownloadService {
     try {
       final docDir = await getApplicationDocumentsDirectory();
       final sanitizedFolder = sanitizeFilename(task.groupName!);
-      final metaFile = File('${docDir.path}/audios/$sanitizedFolder/.playlist.json');
+      final metaFile = File(
+        '${docDir.path}/audios/$sanitizedFolder/.playlist.json',
+      );
       if (!await metaFile.exists()) return;
 
       final content = await metaFile.readAsString();
       final data = jsonDecode(content) as Map<String, dynamic>;
-      final items = (data['items'] as List?)?.cast<Map<String, dynamic>>() ?? [];
+      final items =
+          (data['items'] as List?)?.cast<Map<String, dynamic>>() ?? [];
 
       String statusStr;
       switch (task.status) {
@@ -221,11 +224,16 @@ class DownloadService {
       }
 
       final idx = items.indexWhere(
-        (it) => it['videoId'] == task.id || (task.playlistIndex != null && it['index'] == task.playlistIndex),
+        (it) =>
+            it['videoId'] == task.id ||
+            (task.playlistIndex != null && it['index'] == task.playlistIndex),
       );
 
-      final filename = task.savedFilePath?.split(RegExp(r'[\\/]')).last ??
-          (task.customFilename != null ? '${task.customFilename}.m4a' : '${task.title}.m4a');
+      final filename =
+          task.savedFilePath?.split(RegExp(r'[\\/]')).last ??
+          (task.customFilename != null
+              ? '${task.customFilename}.m4a'
+              : '${task.title}.m4a');
 
       if (idx != -1) {
         items[idx]['status'] = statusStr;
@@ -336,7 +344,9 @@ class DownloadService {
     if (existingDir != null) {
       folderName = existingDir.path.split(RegExp(r'[\\/]')).last;
       try {
-        final content = await File('${existingDir.path}/.playlist.json').readAsString();
+        final content = await File(
+          '${existingDir.path}/.playlist.json',
+        ).readAsString();
         existingMeta = jsonDecode(content) as Map<String, dynamic>;
       } catch (_) {}
     }
@@ -348,7 +358,9 @@ class DownloadService {
     int remainingToDownload = 0;
 
     final docDir = await getApplicationDocumentsDirectory();
-    final saveDir = Directory('${docDir.path}/audios/${sanitizeFilename(folderName)}');
+    final saveDir = Directory(
+      '${docDir.path}/audios/${sanitizeFilename(folderName)}',
+    );
     if (!await saveDir.exists()) {
       await saveDir.create(recursive: true);
     }
@@ -357,7 +369,8 @@ class DownloadService {
     if (existingMeta != null && existingMeta['items'] is List) {
       for (final item in (existingMeta['items'] as List)) {
         if (item is Map && item['videoId'] != null) {
-          existingItemsByVideoId[item['videoId'].toString()] = Map<String, dynamic>.from(item);
+          existingItemsByVideoId[item['videoId'].toString()] =
+              Map<String, dynamic>.from(item);
         }
       }
     }
@@ -380,7 +393,9 @@ class DownloadService {
       bool isAlreadyDone = false;
       String? actualFilename = existingItemMeta?['filename']?.toString();
 
-      if (existingItemMeta != null && existingItemMeta['status'] == 'done' && actualFilename != null) {
+      if (existingItemMeta != null &&
+          existingItemMeta['status'] == 'done' &&
+          actualFilename != null) {
         final existingFile = File('${saveDir.path}/$actualFilename');
         if (await existingFile.exists() && await existingFile.length() > 1000) {
           isAlreadyDone = true;
@@ -392,9 +407,12 @@ class DownloadService {
             final base = f.path.split(RegExp(r'[\\/]')).last;
             return base.startsWith('$prefix - ') && !base.endsWith('.part');
           }).toList();
-          if (matchingFiles.isNotEmpty && matchingFiles.first.lengthSync() > 1000) {
+          if (matchingFiles.isNotEmpty &&
+              matchingFiles.first.lengthSync() > 1000) {
             isAlreadyDone = true;
-            actualFilename = matchingFiles.first.path.split(RegExp(r'[\\/]')).last;
+            actualFilename = matchingFiles.first.path
+                .split(RegExp(r'[\\/]'))
+                .last;
             skippedDone++;
           }
         }
@@ -470,10 +488,7 @@ class DownloadService {
     _notify();
     _processQueue();
 
-    return {
-      'skipped': skippedDone,
-      'remaining': remainingToDownload,
-    };
+    return {'skipped': skippedDone, 'remaining': remainingToDownload};
   }
 
   Future<Map<String, int>> enqueueQuranReciterDownload({
@@ -497,7 +512,8 @@ class DownloadService {
 
     final totalCount = suwarToDownload.length;
     final docDir = await getApplicationDocumentsDirectory();
-    final saveDir = existingFolder ??
+    final saveDir =
+        existingFolder ??
         Directory('${docDir.path}/audios/${sanitizeFilename(folder)}');
     final List<Map<String, dynamic>> metaItems = [];
     final List<DownloadTask> tasksToAdd = [];
@@ -591,10 +607,7 @@ class DownloadService {
     _notify();
     _processQueue();
 
-    return {
-      'skipped': skippedDone,
-      'remaining': remainingToDownload,
-    };
+    return {'skipped': skippedDone, 'remaining': remainingToDownload};
   }
 
   void _processQueue() {
@@ -1099,8 +1112,9 @@ class DownloadService {
       // Delete .part file on remove only
       try {
         final docDir = await getApplicationDocumentsDirectory();
-        final folder =
-            task.groupName != null ? sanitizeFilename(task.groupName!) : '';
+        final folder = task.groupName != null
+            ? sanitizeFilename(task.groupName!)
+            : '';
         final filenameBase =
             task.customFilename ?? sanitizeFilename(task.title);
         final dirPath = folder.isNotEmpty

@@ -53,7 +53,9 @@ class SavedAudioEntry {
         sourceReciterName: json['sourceReciterName'],
         sourceSurahName: json['sourceSurahName'],
         sourceSurahId: json['sourceSurahId'],
-        playlistIndex: json['playlistIndex'] is int ? json['playlistIndex'] : null,
+        playlistIndex: json['playlistIndex'] is int
+            ? json['playlistIndex']
+            : null,
       );
 
   @override

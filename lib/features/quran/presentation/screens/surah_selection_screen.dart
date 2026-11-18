@@ -8,7 +8,6 @@ import '../../../../core/constants/app_colors.dart';
 import '../../../../services/audio_handler.dart';
 import '../../../../services/download_service.dart';
 import '../../../../shared/widgets/custom_audio_notification_bar.dart';
-import '../../../downloads/presentation/screens/youtube_download_screen.dart';
 import '../../../downloads/presentation/widgets/download_queue_sheet.dart';
 
 class SurahSelectionScreen extends StatefulWidget {
@@ -231,13 +230,13 @@ class _SurahSelectionScreenState extends State<SurahSelectionScreen> {
                 final scaffoldMessenger = ScaffoldMessenger.of(context);
                 final parentContext = context;
                 Navigator.pop(context);
-                final result =
-                    await DownloadService.instance.enqueueQuranReciterDownload(
-                  reciterName: widget.reciterName,
-                  serverUrl: widget.moshaf['server'],
-                  suwarToDownload: allAvailableSuwar,
-                  customFolderName: folder,
-                );
+                final result = await DownloadService.instance
+                    .enqueueQuranReciterDownload(
+                      reciterName: widget.reciterName,
+                      serverUrl: widget.moshaf['server'],
+                      suwarToDownload: allAvailableSuwar,
+                      customFolderName: folder,
+                    );
                 final skipped = result['skipped'] ?? 0;
                 final remaining = result['remaining'] ?? 0;
                 final msg = (skipped > 0)

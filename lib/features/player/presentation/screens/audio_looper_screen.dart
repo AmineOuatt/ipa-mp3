@@ -344,8 +344,9 @@ class _AudioLooperScreenState extends State<AudioLooperScreen> {
     if (_library.isEmpty) return;
     final List<SavedAudioEntry> queue;
     if (_currentEntry?.groupId != null) {
-      final groupItems =
-          _library.where((e) => e.groupId == _currentEntry!.groupId).toList();
+      final groupItems = _library
+          .where((e) => e.groupId == _currentEntry!.groupId)
+          .toList();
       groupItems.sort((a, b) => a.sortIndex.compareTo(b.sortIndex));
       queue = groupItems.isNotEmpty ? groupItems : _library;
     } else {
@@ -371,8 +372,9 @@ class _AudioLooperScreenState extends State<AudioLooperScreen> {
     if (_library.isEmpty) return;
     final List<SavedAudioEntry> queue;
     if (_currentEntry?.groupId != null) {
-      final groupItems =
-          _library.where((e) => e.groupId == _currentEntry!.groupId).toList();
+      final groupItems = _library
+          .where((e) => e.groupId == _currentEntry!.groupId)
+          .toList();
       groupItems.sort((a, b) => a.sortIndex.compareTo(b.sortIndex));
       queue = groupItems.isNotEmpty ? groupItems : _library;
     } else {
@@ -1008,6 +1010,7 @@ class _AudioLooperScreenState extends State<AudioLooperScreen> {
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
+      useSafeArea: false,
       backgroundColor: Colors.transparent,
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(24)),

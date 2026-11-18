@@ -6,7 +6,6 @@ import 'package:shared_preferences/shared_preferences.dart';
 import '../../../../core/constants/app_colors.dart';
 import '../../../../services/download_service.dart';
 import '../../../../shared/widgets/custom_audio_notification_bar.dart';
-import '../../../downloads/presentation/screens/youtube_download_screen.dart';
 import '../../../downloads/presentation/widgets/download_queue_sheet.dart';
 import 'surah_selection_screen.dart';
 
@@ -242,13 +241,13 @@ class _QuranBrowserModeState extends State<QuranBrowserMode> {
                 final scaffoldMessenger = ScaffoldMessenger.of(context);
                 final parentContext = context;
                 Navigator.pop(context);
-                final result =
-                    await DownloadService.instance.enqueueQuranReciterDownload(
-                  reciterName: reciterName,
-                  serverUrl: moshaf['server'].toString(),
-                  suwarToDownload: allSuwar,
-                  customFolderName: folder,
-                );
+                final result = await DownloadService.instance
+                    .enqueueQuranReciterDownload(
+                      reciterName: reciterName,
+                      serverUrl: moshaf['server'].toString(),
+                      suwarToDownload: allSuwar,
+                      customFolderName: folder,
+                    );
                 final skipped = result['skipped'] ?? 0;
                 final remaining = result['remaining'] ?? 0;
                 final msg = (skipped > 0)
