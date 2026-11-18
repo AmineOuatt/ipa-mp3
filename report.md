@@ -30,13 +30,17 @@
    - Real-time synchronization via `home_widget` and `WidgetService`.
    - Hardware/Media controls: Play/Pause, Next, and Previous buttons send broadcast intents directly to `audio_service`, controlling the real audio player even when the app is minimized.
 
-4. **B4: In-App YouTube Audio Downloader (Fixed & Streamlined)**
-   - **Diagnosis & Fix**:
-     - Resolved stream selection bug where `sortByBitrate().last` was selecting the lowest-quality stream rather than the highest.
-     - Switched to preferring universally compatible `mp4/m4a` streams over `webm` for seamless playback across both Android and iOS audio players.
-     - Fixed `DownloadService` active count double-decrement bug that could cause downloads to stall.
-     - Added stream progress throttling (400ms / 2% delta) preventing notification spam over platform channels from freezing the download.
-   - Integrated clipboard auto-paste, instant link analysis, metadata preview, and background download to library.
+4. **B4: In-App YouTube Audio Downloader (Hardened & Resilient)**
+   - **Root Cause Diagnosed**:
+     - YouTube implemented strict bot/PO-token gating on `googlevideo.com` CDN adaptive audio streams (itags 140, 251), returning 403 or stalling connections indefinitely.
+     - `youtube_explode_dart` swallowed stream connection errors (`onError: (_) => null`), leaving the download loop waiting forever at 0 / Total MB with no error surfaced.
+     - Default watch page fetching (`requireWatchPage: true`) hit YouTube's IP rate limiter (`RequestLimitExceededException`).
+   - **Fix Implemented**:
+     - **Multi-Client Manifest Fallback**: Requests streams with `requireWatchPage: false` using `YoutubeApiClient.androidVr` and `ios` with fallback to default client.
+     - **Multi-Candidate Stream Fallback**: Tests candidate streams in priority order (Audio-only MP4 -> Audio-only WebM -> Muxed MP4 tag 18 which bypasses CDN bot-token checks).
+     - **15-Second Chunk Timeout**: Detects 0-byte stalls within 15 seconds, aborts unresponsive streams, and seamlessly transitions to the next stream candidate.
+     - **Atomic Part Files**: Writes to `<file>.part` and renames to final destination only on successful completion; cleans up `.part` files on failure or cancellation.
+     - **Informative Error Reporting & Retry**: Surfaces clean user-facing error messages on the task tile and enables one-tap Retry.
 
 5. **B5: YouTube Playlist Download as Folder**
    - Detects playlist URLs, fetches all tracks, and prompts for a custom folder/sheikh name (with filename sanitization).
@@ -73,7 +77,12 @@
 
 ## 4. Releases & Download Links
 
-### 🚀 Release v4.1 (Latest)
+### 🚀 Release v4.2 (Latest)
+- **Release Page**: [GitHub Release v4.2](https://github.com/AmineOuatt/ipa-mp3/releases/tag/v4.2)
+- **Android APK**: [Download MP360-v4.2.apk (60.1 MB)](https://github.com/AmineOuatt/ipa-mp3/releases/download/v4.2/MP360-v4.2.apk)
+- **iOS IPA**: [Download MP360-v4.2.ipa (9.55 MB)](https://github.com/AmineOuatt/ipa-mp3/releases/download/v4.2/MP360-v4.2.ipa)
+
+### 📦 Release v4.1
 - **Release Page**: [GitHub Release v4.1](https://github.com/AmineOuatt/ipa-mp3/releases/tag/v4.1)
 - **Android APK**: [Download MP360-v4.1.apk (60.1 MB)](https://github.com/AmineOuatt/ipa-mp3/releases/download/v4.1/MP360-v4.1.apk)
 - **iOS IPA**: [Download MP360-v4.1.ipa (9.55 MB)](https://github.com/AmineOuatt/ipa-mp3/releases/download/v4.1/MP360-v4.1.ipa)

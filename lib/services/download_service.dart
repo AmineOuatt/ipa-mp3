@@ -265,6 +265,7 @@ class DownloadService {
     _notify();
 
     IOSink? outputSink;
+    File? partFile;
     File? targetFile;
 
     try {
@@ -291,6 +292,7 @@ class DownloadService {
       if (isDirectHttp) {
         final filePath = '${saveDir.path}/$safeTitle.mp3';
         targetFile = File(filePath);
+        partFile = File('$filePath.part');
 
         if (await targetFile.exists() && await targetFile.length() > 50000) {
           task.savedFilePath = filePath;
@@ -300,7 +302,11 @@ class DownloadService {
           return;
         }
 
-        outputSink = targetFile.openWrite();
+        if (await partFile.exists()) {
+          await partFile.delete();
+        }
+
+        outputSink = partFile.openWrite();
         final request = http.Request('GET', Uri.parse(task.url));
         final response = await http.Client().send(request);
         if (response.statusCode >= 400) {
@@ -316,8 +322,8 @@ class DownloadService {
           if (task.status == DownloadStatus.cancelled) {
             await outputSink.flush();
             await outputSink.close();
-            if (await targetFile.exists()) {
-              await targetFile.delete();
+            if (await partFile.exists()) {
+              await partFile.delete();
             }
             return;
           }
@@ -328,8 +334,8 @@ class DownloadService {
           outputSink.add(data);
 
           final nowMs = DateTime.now().millisecondsSinceEpoch;
-          if ((task.progress - lastNotifiedProgress).abs() >= 0.02 ||
-              (nowMs - lastNotifiedMs) >= 400) {
+          if ((task.progress - lastNotifiedProgress).abs() >= 0.01 ||
+              (nowMs - lastNotifiedMs) >= 100) {
             lastNotifiedProgress = task.progress;
             lastNotifiedMs = nowMs;
             _notify();
@@ -339,13 +345,18 @@ class DownloadService {
         await outputSink.flush();
         await outputSink.close();
 
-        task.savedFilePath = filePath;
+        if (await partFile.exists()) {
+          if (await targetFile.exists()) await targetFile.delete();
+          await partFile.rename(targetFile.path);
+        }
+
+        task.savedFilePath = targetFile.path;
         task.progress = 1.0;
         task.status = DownloadStatus.completed;
 
-        _createAudioEntry(task, filePath);
+        _createAudioEntry(task, targetFile.path);
       } else {
-        // YouTube stream download
+        // YouTube stream download with fallback clients, candidates, and 15s timeout
         VideoId videoId;
         try {
           videoId = VideoId(task.id);
@@ -353,100 +364,208 @@ class DownloadService {
           videoId = VideoId(task.url);
         }
 
-        final manifest = await _yt.videos.streamsClient.getManifest(videoId);
-
-        // Find best audio stream (prefer mp4/m4a for iOS & Android universal support)
-        final mp4Audios = manifest.audioOnly
-            .where((s) => s.container.name.toLowerCase() == 'mp4')
-            .sortByBitrate()
-            .toList();
-
-        StreamInfo? selectedStream;
-        String ext = 'm4a';
-
-        if (mp4Audios.isNotEmpty) {
-          selectedStream = mp4Audios.first;
-          ext = 'm4a';
-        } else {
-          final allAudios = manifest.audioOnly.sortByBitrate().toList();
-          if (allAudios.isNotEmpty) {
-            selectedStream = allAudios.first;
-            ext = selectedStream.container.name.toLowerCase() == 'mp4'
-                ? 'm4a'
-                : selectedStream.container.name;
-          } else if (manifest.muxed.isNotEmpty) {
-            selectedStream = manifest.muxed.sortByBitrate().first;
-            ext = 'mp4';
+        // 1. Fetch stream manifest with fallback clients and bypass watch page rate limiting
+        StreamManifest? manifest;
+        try {
+          manifest = await _yt.videos.streamsClient.getManifest(
+            videoId,
+            ytClients: [YoutubeApiClient.androidVr, YoutubeApiClient.ios],
+            requireWatchPage: false,
+          );
+        } catch (_) {
+          try {
+            manifest = await _yt.videos.streamsClient.getManifest(
+              videoId,
+              requireWatchPage: false,
+            );
+          } catch (_) {
+            manifest = await _yt.videos.streamsClient.getManifest(videoId);
           }
         }
 
-        if (selectedStream == null) {
-          throw Exception('No playable audio stream available for this video');
+        if (manifest.streams.isEmpty) {
+          throw Exception('No playable streams found for this YouTube video.');
         }
 
-        final filePath = '${saveDir.path}/$safeTitle.$ext';
-        targetFile = File(filePath);
+        // 2. Prioritize candidate streams:
+        // Priority A: Audio-only MP4/M4A (highest bitrate)
+        // Priority B: Audio-only WebM (highest bitrate)
+        // Priority C: Muxed MP4 (e.g. tag 18 / 360p mp4, unthrottled and plays audio natively)
+        // Priority D: Any remaining muxed stream
+        final candidates = <StreamInfo>[];
+        candidates.addAll(
+          manifest.audioOnly
+              .where((s) => s.container.name.toLowerCase() == 'mp4')
+              .sortByBitrate(),
+        );
+        candidates.addAll(
+          manifest.audioOnly
+              .where((s) => s.container.name.toLowerCase() != 'mp4')
+              .sortByBitrate(),
+        );
+        candidates.addAll(
+          manifest.muxed
+              .where((s) => s.container.name.toLowerCase() == 'mp4')
+              .sortByBitrate(),
+        );
+        candidates.addAll(
+          manifest.muxed
+              .where((s) => s.container.name.toLowerCase() != 'mp4')
+              .sortByBitrate(),
+        );
 
-        // Skip download if already exists with full size
-        if (await targetFile.exists() &&
-            await targetFile.length() >= selectedStream.size.totalBytes) {
-          task.savedFilePath = filePath;
-          task.progress = 1.0;
-          task.status = DownloadStatus.completed;
-
-          _createAudioEntry(task, filePath);
-          return;
+        if (candidates.isEmpty) {
+          throw Exception(
+            'No audio or media streams available for this video.',
+          );
         }
 
-        outputSink = targetFile.openWrite();
-        final stream = _yt.videos.streamsClient.get(selectedStream);
-        final total = selectedStream.size.totalBytes;
-        task.totalBytes = total;
-        int count = 0;
-        int lastNotifiedMs = 0;
-        double lastNotifiedProgress = 0.0;
+        bool downloadSuccess = false;
+        String? lastStreamError;
 
-        await for (final data in stream) {
-          if (task.status == DownloadStatus.cancelled) {
-            await outputSink.flush();
-            await outputSink.close();
-            if (await targetFile.exists()) {
-              await targetFile.delete();
-            }
+        for (int i = 0; i < candidates.length; i++) {
+          if (task.status == DownloadStatus.cancelled) return;
+
+          final candidate = candidates[i];
+          final isMp4 = candidate.container.name.toLowerCase() == 'mp4';
+          final ext = isMp4 ? 'm4a' : candidate.container.name;
+          final filePath = '${saveDir.path}/$safeTitle.$ext';
+          targetFile = File(filePath);
+          partFile = File('$filePath.part');
+
+          // Skip download if already exists with full size
+          if (await targetFile.exists() &&
+              await targetFile.length() >= candidate.size.totalBytes) {
+            task.savedFilePath = filePath;
+            task.progress = 1.0;
+            task.downloadedBytes = candidate.size.totalBytes;
+            task.totalBytes = candidate.size.totalBytes;
+            task.status = DownloadStatus.completed;
+            _createAudioEntry(task, filePath);
             return;
           }
 
-          count += data.length;
-          task.downloadedBytes = count;
-          task.progress = total > 0 ? (count / total).clamp(0.0, 1.0) : 0.0;
-          outputSink.add(data);
+          task.totalBytes = candidate.size.totalBytes;
+          task.downloadedBytes = 0;
+          task.progress = 0.0;
+          _notify();
 
-          final nowMs = DateTime.now().millisecondsSinceEpoch;
-          if ((task.progress - lastNotifiedProgress).abs() >= 0.02 ||
-              (nowMs - lastNotifiedMs) >= 400) {
-            lastNotifiedProgress = task.progress;
-            lastNotifiedMs = nowMs;
-            _notify();
+          StreamSubscription<List<int>>? subscription;
+          final firstChunkCompleter = Completer<bool>();
+          final doneCompleter = Completer<void>();
+          int receivedCount = 0;
+          int lastNotifiedMs = 0;
+          double lastNotifiedProgress = 0.0;
+
+          try {
+            if (await partFile.exists()) await partFile.delete();
+            outputSink = partFile.openWrite();
+
+            final stream = _yt.videos.streamsClient.get(candidate);
+
+            subscription = stream.listen(
+              (chunk) {
+                if (!firstChunkCompleter.isCompleted) {
+                  firstChunkCompleter.complete(true);
+                }
+                if (task.status == DownloadStatus.cancelled) {
+                  return;
+                }
+                receivedCount += chunk.length;
+                task.downloadedBytes = receivedCount;
+                task.progress = (receivedCount / candidate.size.totalBytes)
+                    .clamp(0.0, 1.0);
+                outputSink?.add(chunk);
+
+                final nowMs = DateTime.now().millisecondsSinceEpoch;
+                if ((task.progress - lastNotifiedProgress).abs() >= 0.01 ||
+                    (nowMs - lastNotifiedMs) >= 100) {
+                  lastNotifiedProgress = task.progress;
+                  lastNotifiedMs = nowMs;
+                  _notify();
+                }
+              },
+              onError: (e) {
+                if (!firstChunkCompleter.isCompleted) {
+                  firstChunkCompleter.complete(false);
+                }
+                if (!doneCompleter.isCompleted) doneCompleter.completeError(e);
+              },
+              onDone: () {
+                if (!doneCompleter.isCompleted) doneCompleter.complete();
+              },
+              cancelOnError: true,
+            );
+
+            // 15-second timeout waiting for first chunk
+            final gotFirstChunk = await firstChunkCompleter.future.timeout(
+              const Duration(seconds: 15),
+              onTimeout: () => false,
+            );
+
+            if (!gotFirstChunk) {
+              await subscription.cancel();
+              await outputSink.flush();
+              await outputSink.close();
+              outputSink = null;
+              if (await partFile.exists()) await partFile.delete();
+              lastStreamError =
+                  'Stream timed out with 0 bytes received (tag ${candidate.tag}). Trying alternate stream.';
+              continue; // Try next candidate stream!
+            }
+
+            // Wait for download to finish
+            await doneCompleter.future;
+            await outputSink.flush();
+            await outputSink.close();
+            outputSink = null;
+
+            if (task.status == DownloadStatus.cancelled) {
+              if (await partFile.exists()) await partFile.delete();
+              return;
+            }
+
+            if (receivedCount > 0 && await partFile.exists()) {
+              if (await targetFile.exists()) await targetFile.delete();
+              await partFile.rename(targetFile.path);
+
+              task.savedFilePath = targetFile.path;
+              task.progress = 1.0;
+              task.downloadedBytes = candidate.size.totalBytes;
+              task.status = DownloadStatus.completed;
+
+              _createAudioEntry(task, targetFile.path);
+              downloadSuccess = true;
+              break;
+            }
+          } catch (e) {
+            lastStreamError = e.toString();
+            try {
+              await subscription?.cancel();
+              if (outputSink != null) {
+                await outputSink.close();
+                outputSink = null;
+              }
+              if (await partFile.exists()) await partFile.delete();
+            } catch (_) {}
           }
         }
 
-        await outputSink.flush();
-        await outputSink.close();
-
-        task.savedFilePath = filePath;
-        task.progress = 1.0;
-        task.status = DownloadStatus.completed;
-
-        _createAudioEntry(task, filePath);
+        if (!downloadSuccess && task.status != DownloadStatus.cancelled) {
+          throw Exception(
+            lastStreamError ??
+                'YouTube audio stream failed or was blocked by CDN. Please tap retry.',
+          );
+        }
       }
     } catch (e) {
       debugPrint('Download error for ${task.title}: $e');
       task.status = DownloadStatus.failed;
-      task.error = e.toString();
+      task.error = e.toString().replaceFirst('Exception: ', '');
       try {
         if (outputSink != null) await outputSink.close();
-        if (targetFile != null && await targetFile.exists()) {
-          await targetFile.delete();
+        if (partFile != null && await partFile.exists()) {
+          await partFile.delete();
         }
       } catch (_) {}
     } finally {
@@ -496,6 +615,7 @@ class DownloadService {
       task.status = DownloadStatus.pending;
       task.error = null;
       task.progress = 0.0;
+      task.downloadedBytes = 0;
       _notify();
       _processQueue();
     }

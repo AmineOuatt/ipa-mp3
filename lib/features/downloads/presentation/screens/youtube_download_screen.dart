@@ -567,7 +567,7 @@ class _YoutubeDownloadScreenState extends State<YoutubeDownloadScreen> {
             Text(
               task.error ?? 'Download failed',
               style: const TextStyle(color: Colors.redAccent, fontSize: 11),
-              maxLines: 1,
+              maxLines: 2,
               overflow: TextOverflow.ellipsis,
             ),
           ],
