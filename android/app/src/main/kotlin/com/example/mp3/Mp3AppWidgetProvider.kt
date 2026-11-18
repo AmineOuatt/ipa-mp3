@@ -79,10 +79,6 @@ class Mp3AppWidgetProvider : HomeWidgetProvider() {
                     R.id.widget_btn_next,
                     createBroadcastPendingIntent(context, ACTION_NEXT, 102)
                 )
-                setOnClickPendingIntent(
-                    R.id.widget_btn_stop,
-                    createBroadcastPendingIntent(context, ACTION_STOP, 105)
-                )
             }
 
             appWidgetManager.updateAppWidget(widgetId, views)
