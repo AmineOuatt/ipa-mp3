@@ -1290,7 +1290,7 @@ class _AudioLooperScreenState extends State<AudioLooperScreen> {
                   ),
                   const SizedBox(height: 8),
 
-                  // Main Controls: Previous, -5s, Play/Pause, Stop, +5s, Next
+                  // Main Controls: Previous, -5s, Play/Pause, +5s, Next
                   Row(
                     mainAxisAlignment: MainAxisAlignment.center,
                     children: [
@@ -1316,14 +1316,14 @@ class _AudioLooperScreenState extends State<AudioLooperScreen> {
                         },
                       ),
                       Container(
-                        margin: const EdgeInsets.symmetric(horizontal: 4),
+                        margin: const EdgeInsets.symmetric(horizontal: 8),
                         decoration: const BoxDecoration(
                           color: Color(0xFF1DB954),
                           shape: BoxShape.circle,
                         ),
                         child: IconButton(
-                          iconSize: 38,
-                          padding: const EdgeInsets.all(9),
+                          iconSize: 40,
+                          padding: const EdgeInsets.all(10),
                           icon: Icon(
                             _isPlaying ? Icons.pause : Icons.play_arrow,
                             color: Colors.black,
@@ -1333,15 +1333,6 @@ class _AudioLooperScreenState extends State<AudioLooperScreen> {
                             _isPlaying ? _player.pause() : _player.play();
                           },
                         ),
-                      ),
-                      IconButton(
-                        tooltip: "Stop",
-                        iconSize: 26,
-                        icon: const Icon(
-                          Icons.stop_circle_outlined,
-                          color: Colors.redAccent,
-                        ),
-                        onPressed: _stopPlayback,
                       ),
                       IconButton(
                         tooltip: "Pass +5s",
