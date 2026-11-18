@@ -5,6 +5,7 @@ enum DownloadStatus {
   failed,
   paused,
   cancelled,
+  stopped,
 }
 
 class DownloadTask {
@@ -16,6 +17,11 @@ class DownloadTask {
   final Duration? duration;
   final String? targetGroupId;
   final String? groupName;
+  final int? playlistIndex;
+  final int? playlistTotal;
+  final String? playlistId;
+  final String? playlistTitle;
+  String? customFilename;
 
   DownloadStatus status;
   double progress; // 0.0 to 1.0
@@ -33,6 +39,11 @@ class DownloadTask {
     this.duration,
     this.targetGroupId,
     this.groupName,
+    this.playlistIndex,
+    this.playlistTotal,
+    this.playlistId,
+    this.playlistTitle,
+    this.customFilename,
     this.status = DownloadStatus.pending,
     this.progress = 0.0,
     this.downloadedBytes = 0,
@@ -45,4 +56,6 @@ class DownloadTask {
       status == DownloadStatus.pending || status == DownloadStatus.downloading;
   bool get isCompleted => status == DownloadStatus.completed;
   bool get isFailed => status == DownloadStatus.failed;
+  bool get isStopped =>
+      status == DownloadStatus.stopped || status == DownloadStatus.paused;
 }

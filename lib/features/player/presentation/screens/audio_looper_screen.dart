@@ -81,7 +81,10 @@ class _AudioLooperScreenState extends State<AudioLooperScreen> {
         final existing = _library.indexWhere((e) => e.path == entry.path);
         if (existing == -1) {
           _library.add(entry);
+        } else {
+          _library[existing] = entry;
         }
+        _sortLibrary();
       });
       _saveLibrary();
     };
@@ -273,6 +276,7 @@ class _AudioLooperScreenState extends State<AudioLooperScreen> {
                 })
                 .whereType<SavedAudioEntry>()
                 .toList();
+            _sortLibrary();
           });
         } catch (e) {
           debugPrint("Error decoding library JSON: $e");
@@ -324,14 +328,36 @@ class _AudioLooperScreenState extends State<AudioLooperScreen> {
     await _prefs?.setString('audioGroups', groupsJson);
   }
 
+  void _sortLibrary() {
+    _library.sort((a, b) {
+      final groupA = a.groupId ?? '';
+      final groupB = b.groupId ?? '';
+      final groupComp = groupA.compareTo(groupB);
+      if (groupComp != 0) return groupComp;
+      final idxComp = a.sortIndex.compareTo(b.sortIndex);
+      if (idxComp != 0) return idxComp;
+      return a.name.compareTo(b.name);
+    });
+  }
+
   void _skipToNextAudio() {
     if (_library.isEmpty) return;
+    final List<SavedAudioEntry> queue;
+    if (_currentEntry?.groupId != null) {
+      final groupItems =
+          _library.where((e) => e.groupId == _currentEntry!.groupId).toList();
+      groupItems.sort((a, b) => a.sortIndex.compareTo(b.sortIndex));
+      queue = groupItems.isNotEmpty ? groupItems : _library;
+    } else {
+      queue = _library;
+    }
+
     int idx = -1;
     if (_currentEntry != null) {
-      idx = _library.indexWhere((e) => e.path == _currentEntry!.path);
+      idx = queue.indexWhere((e) => e.path == _currentEntry!.path);
     }
-    final nextIdx = (idx == -1) ? 0 : (idx + 1) % _library.length;
-    final next = _library[nextIdx];
+    final nextIdx = (idx == -1) ? 0 : (idx + 1) % queue.length;
+    final next = queue[nextIdx];
     _loadFile(
       next.path,
       next.name,
@@ -343,12 +369,22 @@ class _AudioLooperScreenState extends State<AudioLooperScreen> {
 
   void _skipToPreviousAudio() {
     if (_library.isEmpty) return;
+    final List<SavedAudioEntry> queue;
+    if (_currentEntry?.groupId != null) {
+      final groupItems =
+          _library.where((e) => e.groupId == _currentEntry!.groupId).toList();
+      groupItems.sort((a, b) => a.sortIndex.compareTo(b.sortIndex));
+      queue = groupItems.isNotEmpty ? groupItems : _library;
+    } else {
+      queue = _library;
+    }
+
     int idx = -1;
     if (_currentEntry != null) {
-      idx = _library.indexWhere((e) => e.path == _currentEntry!.path);
+      idx = queue.indexWhere((e) => e.path == _currentEntry!.path);
     }
-    final prevIdx = (idx <= 0) ? _library.length - 1 : idx - 1;
-    final prev = _library[prevIdx];
+    final prevIdx = (idx <= 0) ? queue.length - 1 : idx - 1;
+    final prev = queue[prevIdx];
     _loadFile(
       prev.path,
       prev.name,

@@ -8,6 +8,7 @@ class SavedAudioEntry {
   String? sourceReciterName;
   String? sourceSurahName;
   String? sourceSurahId;
+  int? playlistIndex;
 
   SavedAudioEntry({
     required this.path,
@@ -17,7 +18,18 @@ class SavedAudioEntry {
     this.sourceReciterName,
     this.sourceSurahName,
     this.sourceSurahId,
+    this.playlistIndex,
   }) : segments = segments ?? [];
+
+  int get sortIndex {
+    if (playlistIndex != null) return playlistIndex!;
+    final base = path.split(RegExp(r'[\\/]')).last;
+    final match = RegExp(r'^(\d+)').firstMatch(base);
+    if (match != null) {
+      return int.tryParse(match.group(1)!) ?? 999999;
+    }
+    return 999999;
+  }
 
   Map<String, dynamic> toJson() => {
     'path': path,
@@ -27,6 +39,7 @@ class SavedAudioEntry {
     'sourceReciterName': sourceReciterName,
     'sourceSurahName': sourceSurahName,
     'sourceSurahId': sourceSurahId,
+    'playlistIndex': playlistIndex,
   };
 
   factory SavedAudioEntry.fromJson(Map<String, dynamic> json) =>
@@ -40,6 +53,7 @@ class SavedAudioEntry {
         sourceReciterName: json['sourceReciterName'],
         sourceSurahName: json['sourceSurahName'],
         sourceSurahId: json['sourceSurahId'],
+        playlistIndex: json['playlistIndex'] is int ? json['playlistIndex'] : null,
       );
 
   @override

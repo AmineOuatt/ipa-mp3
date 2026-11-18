@@ -1,5 +1,7 @@
 import 'dart:async';
+import 'dart:convert';
 import 'dart:io';
+import 'dart:math';
 
 import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
@@ -93,6 +95,123 @@ class DownloadService {
         .trim();
   }
 
+  Future<Directory?> findFolderByPlaylistId(String playlistId) async {
+    try {
+      final docDir = await getApplicationDocumentsDirectory();
+      final audiosDir = Directory('${docDir.path}/audios');
+      if (!await audiosDir.exists()) return null;
+
+      final entities = await audiosDir.list().toList();
+      for (final entity in entities) {
+        if (entity is Directory) {
+          final metaFile = File('${entity.path}/.playlist.json');
+          if (await metaFile.exists()) {
+            try {
+              final content = await metaFile.readAsString();
+              final json = jsonDecode(content) as Map<String, dynamic>;
+              if (json['playlistId'] == playlistId) {
+                return entity;
+              }
+            } catch (_) {}
+          }
+        }
+      }
+    } catch (e) {
+      debugPrint('Error searching for playlist folder: $e');
+    }
+    return null;
+  }
+
+  Future<void> _writePlaylistMetadataFile({
+    required Directory saveDir,
+    required String playlistId,
+    required String playlistTitle,
+    required List<Map<String, dynamic>> items,
+  }) async {
+    try {
+      if (!await saveDir.exists()) {
+        await saveDir.create(recursive: true);
+      }
+      final file = File('${saveDir.path}/.playlist.json');
+      final data = {
+        'playlistId': playlistId,
+        'playlistTitle': playlistTitle,
+        'totalItems': items.length,
+        'updatedAt': DateTime.now().toIso8601String(),
+        'items': items,
+      };
+      await file.writeAsString(jsonEncode(data), flush: true);
+    } catch (e) {
+      debugPrint('Error writing .playlist.json: $e');
+    }
+  }
+
+  Future<void> _updateTaskInMetadata(DownloadTask task) async {
+    if (task.groupName == null) return;
+    try {
+      final docDir = await getApplicationDocumentsDirectory();
+      final sanitizedFolder = sanitizeFilename(task.groupName!);
+      final metaFile = File('${docDir.path}/audios/$sanitizedFolder/.playlist.json');
+      if (!await metaFile.exists()) return;
+
+      final content = await metaFile.readAsString();
+      final data = jsonDecode(content) as Map<String, dynamic>;
+      final items = (data['items'] as List?)?.cast<Map<String, dynamic>>() ?? [];
+
+      String statusStr;
+      switch (task.status) {
+        case DownloadStatus.completed:
+          statusStr = 'done';
+          break;
+        case DownloadStatus.downloading:
+          statusStr = 'downloading';
+          break;
+        case DownloadStatus.stopped:
+        case DownloadStatus.paused:
+          statusStr = 'stopped';
+          break;
+        case DownloadStatus.failed:
+          statusStr = 'failed';
+          break;
+        case DownloadStatus.pending:
+        case DownloadStatus.cancelled:
+          statusStr = 'pending';
+          break;
+      }
+
+      final idx = items.indexWhere(
+        (it) => it['videoId'] == task.id || (task.playlistIndex != null && it['index'] == task.playlistIndex),
+      );
+
+      final filename = task.savedFilePath?.split(RegExp(r'[\\/]')).last ??
+          (task.customFilename != null ? '${task.customFilename}.m4a' : '${task.title}.m4a');
+
+      if (idx != -1) {
+        items[idx]['status'] = statusStr;
+        items[idx]['filename'] = filename;
+      } else {
+        items.add({
+          'index': task.playlistIndex ?? (items.length + 1),
+          'videoId': task.id,
+          'title': task.title,
+          'filename': filename,
+          'status': statusStr,
+        });
+      }
+
+      data['items'] = items;
+      data['updatedAt'] = DateTime.now().toIso8601String();
+      await metaFile.writeAsString(jsonEncode(data), flush: true);
+    } catch (e) {
+      debugPrint('Error updating .playlist.json for task ${task.id}: $e');
+    }
+  }
+
+  void _setTaskStatus(DownloadTask task, DownloadStatus status) {
+    task.status = status;
+    _updateTaskInMetadata(task);
+  }
+
   Future<void> enqueueSingleDownload({
     required Video video,
     String? targetGroupId,
@@ -164,16 +283,112 @@ class DownloadService {
     _processQueue();
   }
 
-  Future<void> enqueuePlaylistDownload({
+  Future<Map<String, int>> enqueuePlaylistDownload({
     required Playlist playlist,
     required List<Video> videos,
     required String customFolderName,
   }) async {
-    final groupId = DateTime.now().millisecondsSinceEpoch.toString();
-    final group = AudioGroup(id: groupId, name: customFolderName);
+    final existingDir = await findFolderByPlaylistId(playlist.id.value);
+    String folderName = customFolderName;
+    Map<String, dynamic>? existingMeta;
+
+    if (existingDir != null) {
+      folderName = existingDir.path.split(RegExp(r'[\\/]')).last;
+      try {
+        final content = await File('${existingDir.path}/.playlist.json').readAsString();
+        existingMeta = jsonDecode(content) as Map<String, dynamic>;
+      } catch (_) {}
+    }
+
+    final totalCount = videos.length;
+    final padLength = max(3, totalCount.toString().length);
+
+    int skippedDone = 0;
+    int remainingToDownload = 0;
+
+    final docDir = await getApplicationDocumentsDirectory();
+    final saveDir = Directory('${docDir.path}/audios/${sanitizeFilename(folderName)}');
+    if (!await saveDir.exists()) {
+      await saveDir.create(recursive: true);
+    }
+
+    final Map<String, Map<String, dynamic>> existingItemsByVideoId = {};
+    if (existingMeta != null && existingMeta['items'] is List) {
+      for (final item in (existingMeta['items'] as List)) {
+        if (item is Map && item['videoId'] != null) {
+          existingItemsByVideoId[item['videoId'].toString()] = Map<String, dynamic>.from(item);
+        }
+      }
+    }
+
+    final List<Map<String, dynamic>> metaItems = [];
+    final List<DownloadTask> tasksToAdd = [];
+
+    final groupId = playlist.id.value;
+    final group = AudioGroup(id: groupId, name: folderName);
     onGroupCreated?.call(group);
 
-    for (final video in videos) {
+    for (int i = 0; i < videos.length; i++) {
+      final video = videos[i];
+      final index = i + 1;
+      final prefix = index.toString().padLeft(padLength, '0');
+      final safeTitle = sanitizeFilename(video.title);
+      final filenamePrefix = "$prefix - $safeTitle";
+
+      final existingItemMeta = existingItemsByVideoId[video.id.value];
+      bool isAlreadyDone = false;
+      String? actualFilename = existingItemMeta?['filename']?.toString();
+
+      if (existingItemMeta != null && existingItemMeta['status'] == 'done' && actualFilename != null) {
+        final existingFile = File('${saveDir.path}/$actualFilename');
+        if (await existingFile.exists() && await existingFile.length() > 1000) {
+          isAlreadyDone = true;
+          skippedDone++;
+        }
+      } else {
+        if (await saveDir.exists()) {
+          final matchingFiles = saveDir.listSync().whereType<File>().where((f) {
+            final base = f.path.split(RegExp(r'[\\/]')).last;
+            return base.startsWith('$prefix - ') && !base.endsWith('.part');
+          }).toList();
+          if (matchingFiles.isNotEmpty && matchingFiles.first.lengthSync() > 1000) {
+            isAlreadyDone = true;
+            actualFilename = matchingFiles.first.path.split(RegExp(r'[\\/]')).last;
+            skippedDone++;
+          }
+        }
+      }
+
+      metaItems.add({
+        'index': index,
+        'videoId': video.id.value,
+        'title': video.title,
+        'filename': actualFilename ?? '$filenamePrefix.m4a',
+        'status': isAlreadyDone ? 'done' : 'pending',
+      });
+
+      if (isAlreadyDone) {
+        _createAudioEntry(
+          DownloadTask(
+            id: video.id.value,
+            url: video.url,
+            title: video.title,
+            author: video.author,
+            targetGroupId: groupId,
+            groupName: folderName,
+            playlistIndex: index,
+            playlistTotal: totalCount,
+            playlistId: playlist.id.value,
+            playlistTitle: playlist.title,
+            customFilename: filenamePrefix,
+          ),
+          '${saveDir.path}/$actualFilename',
+        );
+        continue;
+      }
+
+      remainingToDownload++;
+
       final existingIndex = _tasks.indexWhere((t) => t.id == video.id.value);
       if (existingIndex != -1) {
         final existing = _tasks[existingIndex];
@@ -192,13 +407,32 @@ class DownloadService {
         thumbnailUrl: video.thumbnails.mediumResUrl,
         duration: video.duration,
         targetGroupId: groupId,
-        groupName: customFolderName,
+        groupName: folderName,
+        playlistIndex: index,
+        playlistTotal: totalCount,
+        playlistId: playlist.id.value,
+        playlistTitle: playlist.title,
+        customFilename: filenamePrefix,
       );
-      _tasks.add(task);
+      tasksToAdd.add(task);
     }
+
+    _tasks.addAll(tasksToAdd);
+
+    await _writePlaylistMetadataFile(
+      saveDir: saveDir,
+      playlistId: playlist.id.value,
+      playlistTitle: playlist.title,
+      items: metaItems,
+    );
 
     _notify();
     _processQueue();
+
+    return {
+      'skipped': skippedDone,
+      'remaining': remainingToDownload,
+    };
   }
 
   Future<void> enqueueQuranReciterDownload({
@@ -212,11 +446,28 @@ class DownloadService {
     final group = AudioGroup(id: groupId, name: folder);
     onGroupCreated?.call(group);
 
-    for (final s in suwarToDownload) {
+    final totalCount = suwarToDownload.length;
+    final docDir = await getApplicationDocumentsDirectory();
+    final saveDir = Directory('${docDir.path}/audios/${sanitizeFilename(folder)}');
+    final List<Map<String, dynamic>> metaItems = [];
+
+    for (int i = 0; i < suwarToDownload.length; i++) {
+      final s = suwarToDownload[i];
+      final surahNum = int.tryParse(s['id'].toString()) ?? (i + 1);
       final surahIdStr = s['id'].toString().padLeft(3, '0');
+      final prefix = surahNum.toString().padLeft(3, '0');
       final url = "$serverUrl$surahIdStr.mp3";
-      final title = "$reciterName - ${s['name']}";
+      final safeTitle = sanitizeFilename(s['name']);
+      final filenamePrefix = "$prefix - $safeTitle";
       final taskId = "quran_${reciterName}_${s['id']}";
+
+      metaItems.add({
+        'index': surahNum,
+        'videoId': taskId,
+        'title': "$reciterName - ${s['name']}",
+        'filename': '$filenamePrefix.mp3',
+        'status': 'pending',
+      });
 
       // Avoid adding if already active or completed
       final existingIndex = _tasks.indexWhere((t) => t.id == taskId);
@@ -232,13 +483,25 @@ class DownloadService {
       final task = DownloadTask(
         id: taskId,
         url: url,
-        title: title,
+        title: "$reciterName - ${s['name']}",
         author: reciterName,
         targetGroupId: groupId,
         groupName: folder,
+        playlistIndex: surahNum,
+        playlistTotal: totalCount,
+        playlistId: 'quran_$reciterName',
+        playlistTitle: reciterName,
+        customFilename: filenamePrefix,
       );
       _tasks.add(task);
     }
+
+    await _writePlaylistMetadataFile(
+      saveDir: saveDir,
+      playlistId: 'quran_$reciterName',
+      playlistTitle: reciterName,
+      items: metaItems,
+    );
 
     _notify();
     _processQueue();
@@ -261,7 +524,7 @@ class DownloadService {
   }
 
   Future<void> _startDownload(DownloadTask task) async {
-    task.status = DownloadStatus.downloading;
+    _setTaskStatus(task, DownloadStatus.downloading);
     _notify();
 
     IOSink? outputSink;
@@ -288,16 +551,17 @@ class DownloadService {
           (!task.url.contains('youtube.com') && !task.url.contains('youtu.be'));
 
       final safeTitle = sanitizeFilename(task.title);
+      final filenameBase = task.customFilename ?? safeTitle;
 
       if (isDirectHttp) {
-        final filePath = '${saveDir.path}/$safeTitle.mp3';
+        final filePath = '${saveDir.path}/$filenameBase.mp3';
         targetFile = File(filePath);
         partFile = File('$filePath.part');
 
         if (await targetFile.exists() && await targetFile.length() > 50000) {
           task.savedFilePath = filePath;
           task.progress = 1.0;
-          task.status = DownloadStatus.completed;
+          _setTaskStatus(task, DownloadStatus.completed);
           _createAudioEntry(task, filePath);
           return;
         }
@@ -352,7 +616,7 @@ class DownloadService {
 
         task.savedFilePath = targetFile.path;
         task.progress = 1.0;
-        task.status = DownloadStatus.completed;
+        _setTaskStatus(task, DownloadStatus.completed);
 
         _createAudioEntry(task, targetFile.path);
       } else {
@@ -452,7 +716,7 @@ class DownloadService {
           final ext = isMuxed
               ? 'mp4'
               : (isMp4 ? 'm4a' : candidate.container.name);
-          final filePath = '${saveDir.path}/$safeTitle.$ext';
+          final filePath = '${saveDir.path}/$filenameBase.$ext';
           targetFile = File(filePath);
           partFile = File('$filePath.part');
 
@@ -463,7 +727,7 @@ class DownloadService {
             task.progress = 1.0;
             task.downloadedBytes = candidate.size.totalBytes;
             task.totalBytes = candidate.size.totalBytes;
-            task.status = DownloadStatus.completed;
+            _setTaskStatus(task, DownloadStatus.completed);
             _createAudioEntry(task, filePath);
             return;
           }
@@ -555,7 +819,7 @@ class DownloadService {
               task.savedFilePath = targetFile.path;
               task.progress = 1.0;
               task.downloadedBytes = candidate.size.totalBytes;
-              task.status = DownloadStatus.completed;
+              _setTaskStatus(task, DownloadStatus.completed);
 
               _createAudioEntry(task, targetFile.path);
               downloadSuccess = true;
@@ -583,7 +847,7 @@ class DownloadService {
       }
     } catch (e) {
       debugPrint('Download error for ${task.title}: $e');
-      task.status = DownloadStatus.failed;
+      _setTaskStatus(task, DownloadStatus.failed);
       task.error = e.toString().replaceFirst('Exception: ', '');
       try {
         if (outputSink != null) await outputSink.close();
@@ -604,6 +868,7 @@ class DownloadService {
       segments: [],
       groupId: task.targetGroupId,
       sourceReciterName: task.author,
+      playlistIndex: task.playlistIndex,
     );
     onAudioDownloaded?.call(entry);
   }
@@ -613,7 +878,7 @@ class DownloadService {
     if (idx != -1) {
       final task = _tasks[idx];
       if (task.isActive) {
-        task.status = DownloadStatus.cancelled;
+        _setTaskStatus(task, DownloadStatus.cancelled);
         _notify();
       } else {
         _tasks.removeAt(idx);
@@ -625,7 +890,7 @@ class DownloadService {
   void cancelAll() {
     for (final task in _tasks) {
       if (task.isActive) {
-        task.status = DownloadStatus.cancelled;
+        _setTaskStatus(task, DownloadStatus.cancelled);
       }
     }
     _notify();
@@ -635,7 +900,7 @@ class DownloadService {
     final idx = _tasks.indexWhere((t) => t.id == taskId);
     if (idx != -1) {
       final task = _tasks[idx];
-      task.status = DownloadStatus.pending;
+      _setTaskStatus(task, DownloadStatus.pending);
       task.error = null;
       task.progress = 0.0;
       task.downloadedBytes = 0;

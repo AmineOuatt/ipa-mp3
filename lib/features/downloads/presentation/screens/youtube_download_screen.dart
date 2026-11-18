@@ -600,6 +600,7 @@ class _YoutubeDownloadScreenState extends State<YoutubeDownloadScreen> {
       case DownloadStatus.failed:
         return const Icon(Icons.error, color: Colors.redAccent, size: 20);
       case DownloadStatus.paused:
+      case DownloadStatus.stopped:
         return const Icon(
           Icons.pause_circle,
           color: Colors.orangeAccent,

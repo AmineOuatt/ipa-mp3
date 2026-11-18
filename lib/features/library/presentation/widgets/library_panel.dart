@@ -148,6 +148,7 @@ class _LibraryPanelState extends State<LibraryPanel> {
                               ),
                         )
                         .toList();
+                    ungroupedItems.sort((a, b) => a.sortIndex.compareTo(b.sortIndex));
 
                     return Column(
                       children: ungroupedItems.map((item) {
@@ -237,6 +238,7 @@ class _LibraryPanelState extends State<LibraryPanel> {
                             ),
                       )
                       .toList();
+                  groupItems.sort((a, b) => a.sortIndex.compareTo(b.sortIndex));
 
                   return Column(
                     children: [
