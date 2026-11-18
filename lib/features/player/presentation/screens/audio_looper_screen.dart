@@ -36,7 +36,9 @@ class _AudioLooperScreenState extends State<AudioLooperScreen> {
   SharedPreferences? _prefs;
 
   bool get _supportsLocalPlaybackNotification =>
-      !kIsWeb && defaultTargetPlatform == TargetPlatform.android;
+      appAudioHandler == null &&
+      !kIsWeb &&
+      defaultTargetPlatform == TargetPlatform.android;
 
   List<SavedAudioEntry> _library = [];
   List<AudioGroup> _audioGroups = [];

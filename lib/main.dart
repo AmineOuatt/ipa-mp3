@@ -28,7 +28,7 @@ void main() async {
           androidNotificationChannelName: 'MP360 Playback',
           androidNotificationChannelDescription:
               'MP360 Audio Player Background Controls',
-          androidNotificationIcon: 'mipmap/ic_launcher',
+          androidNotificationIcon: 'drawable/ic_stat_music',
           fastForwardInterval: Duration(seconds: 5),
           rewindInterval: Duration(seconds: 5),
           androidStopForegroundOnPause: false,

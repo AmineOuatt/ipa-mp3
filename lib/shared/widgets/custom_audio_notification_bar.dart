@@ -5,7 +5,6 @@ import 'package:just_audio/just_audio.dart';
 
 import '../../core/constants/app_colors.dart';
 import '../../core/utils/duration_formatter.dart';
-import '../../features/player/presentation/screens/audio_looper_screen.dart';
 import '../../main.dart';
 
 /// A custom Flutter notification widget bar providing full playback control:

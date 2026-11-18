@@ -52,11 +52,17 @@ class NotificationService {
       playSound: false,
     );
 
-    await _plugin
+    final androidImplementation = _plugin
         .resolvePlatformSpecificImplementation<
           AndroidFlutterLocalNotificationsPlugin
-        >()
-        ?.createNotificationChannel(channel);
+        >();
+
+    await androidImplementation?.createNotificationChannel(channel);
+    try {
+      await androidImplementation?.requestNotificationsPermission();
+    } catch (e) {
+      debugPrint('Notification permission request skipped/failed: $e');
+    }
   }
 
   Future<void> showPlaybackNotification({

@@ -1,6 +1,7 @@
 import 'dart:io';
 
 import 'package:audio_service/audio_service.dart';
+import 'package:audio_session/audio_session.dart';
 import 'package:flutter/foundation.dart';
 import 'package:just_audio/just_audio.dart';
 
@@ -16,11 +17,53 @@ class AppAudioHandler extends BaseAudioHandler with SeekHandler {
 
   AppAudioHandler(this._player) {
     _player.playerStateStream.listen(_broadcastPlaybackState);
+    _player.playbackEventStream.listen((event) {
+      _broadcastPlaybackState(_player.playerState);
+    });
     _player.durationStream.listen((Duration? duration) {
       if (_mediaId != null) {
         _publishMediaItem(duration: duration);
       }
     });
+
+    _initAudioSession();
+  }
+
+  void _initAudioSession() {
+    AudioSession.instance
+        .then((session) async {
+          await session.configure(const AudioSessionConfiguration.music());
+          session.becomingNoisyEventStream.listen((_) {
+            _player.pause();
+          });
+          session.interruptionEventStream.listen((event) {
+            if (event.begin) {
+              switch (event.type) {
+                case AudioInterruptionType.duck:
+                  _player.setVolume(0.5);
+                  break;
+                case AudioInterruptionType.pause:
+                case AudioInterruptionType.unknown:
+                  _player.pause();
+                  break;
+              }
+            } else {
+              switch (event.type) {
+                case AudioInterruptionType.duck:
+                  _player.setVolume(1.0);
+                  break;
+                case AudioInterruptionType.pause:
+                  _player.play();
+                  break;
+                case AudioInterruptionType.unknown:
+                  break;
+              }
+            }
+          });
+        })
+        .catchError((e) {
+          debugPrint('AudioSession error: $e');
+        });
   }
 
   AudioPlayer get player => _player;
@@ -72,6 +115,12 @@ class AppAudioHandler extends BaseAudioHandler with SeekHandler {
           MediaControl.skipToNext,
           MediaControl.stop,
         ],
+        systemActions: const {
+          MediaAction.seek,
+          MediaAction.seekForward,
+          MediaAction.seekBackward,
+          MediaAction.setSpeed,
+        },
         androidCompactActionIndices: const [0, 2, 4],
         processingState: _mapProcessingState(state.processingState),
         playing: state.playing,
@@ -149,7 +198,10 @@ class AppAudioHandler extends BaseAudioHandler with SeekHandler {
   }
 
   @override
-  Future<void> seek(Duration position) => _player.seek(position);
+  Future<void> seek(Duration position) async {
+    await _player.seek(position);
+    playbackState.add(playbackState.value.copyWith(updatePosition: position));
+  }
 
   @override
   Future<void> skipToNext() async {
