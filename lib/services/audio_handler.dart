@@ -108,7 +108,27 @@ class AppAudioHandler extends BaseAudioHandler with SeekHandler {
   VoidCallback? onStopRequested;
 
   @override
-  Future<void> play() => _player.play();
+  Future<void> play() async {
+    if (_player.processingState == ProcessingState.idle ||
+        _player.processingState == ProcessingState.completed) {
+      if (_mediaId != null && _mediaId!.isNotEmpty) {
+        final resumePos = _player.position;
+        final sourceUri =
+            _mediaId!.startsWith('http://') || _mediaId!.startsWith('https://')
+            ? Uri.parse(_mediaId!)
+            : Uri.file(_mediaId!);
+        try {
+          await _player.setAudioSource(
+            AudioSource.uri(sourceUri),
+            initialPosition: resumePos,
+          );
+        } catch (e) {
+          debugPrint('Error recovering in handler.play: $e');
+        }
+      }
+    }
+    return _player.play();
+  }
 
   @override
   Future<void> pause() => _player.pause();

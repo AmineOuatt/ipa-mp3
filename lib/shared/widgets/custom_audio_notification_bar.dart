@@ -293,9 +293,9 @@ class CustomAudioNotificationBar extends StatelessWidget {
   }
 
   void _openPlayer(BuildContext context) {
-    Navigator.of(context).pushAndRemoveUntil(
-      MaterialPageRoute(builder: (_) => const AudioLooperScreen()),
-      (route) => route.isFirst,
-    );
+    if (ModalRoute.of(context)?.isFirst ?? false) {
+      return;
+    }
+    Navigator.of(context).popUntil((route) => route.isFirst);
   }
 }

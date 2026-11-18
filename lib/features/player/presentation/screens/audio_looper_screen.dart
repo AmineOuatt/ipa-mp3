@@ -54,10 +54,18 @@ class _AudioLooperScreenState extends State<AudioLooperScreen> {
   List<double> _waveformSamples = [];
   String _segmentSearchQuery = "";
 
+  StreamSubscription<Duration>? _positionSubscription;
+  StreamSubscription<Duration?>? _durationSubscription;
+  StreamSubscription<PlayerState>? _playerStateSubscription;
+  StreamSubscription? _noisySubscription;
+
   @override
   void initState() {
     super.initState();
     _player = appPlayer;
+    _isPlaying = _player.playing;
+    _position = _player.position;
+    _duration = _player.duration ?? Duration.zero;
     _initApp();
   }
 
@@ -97,7 +105,7 @@ class _AudioLooperScreenState extends State<AudioLooperScreen> {
               defaultTargetPlatform == TargetPlatform.iOS)) {
         final session = await AudioSession.instance;
         await session.configure(const AudioSessionConfiguration.music());
-        session.becomingNoisyEventStream.listen((_) {
+        _noisySubscription = session.becomingNoisyEventStream.listen((_) {
           _player.pause();
         });
 
@@ -112,7 +120,7 @@ class _AudioLooperScreenState extends State<AudioLooperScreen> {
     }
 
     try {
-      _player.positionStream.listen(
+      _positionSubscription = _player.positionStream.listen(
         (pos) {
           if (!mounted) return;
           setState(() => _position = pos);
@@ -134,7 +142,7 @@ class _AudioLooperScreenState extends State<AudioLooperScreen> {
         },
       );
 
-      _player.durationStream.listen(
+      _durationSubscription = _player.durationStream.listen(
         (dur) {
           if (!mounted) return;
           setState(() {
@@ -149,7 +157,7 @@ class _AudioLooperScreenState extends State<AudioLooperScreen> {
         },
       );
 
-      _player.playerStateStream.listen(
+      _playerStateSubscription = _player.playerStateStream.listen(
         (state) {
           if (!mounted) return;
           setState(() {
@@ -289,6 +297,18 @@ class _AudioLooperScreenState extends State<AudioLooperScreen> {
           debugPrint("Error decoding groups JSON: $e");
         }
       }
+
+      if (_currentEntry == null &&
+          appAudioHandler?.mediaItem.value?.id != null) {
+        final activeId = appAudioHandler!.mediaItem.value!.id;
+        final match = _library.where((e) => e.path == activeId).firstOrNull;
+        if (match != null) {
+          setState(() {
+            _currentEntry = match;
+            _loopEnd = _player.duration ?? _duration;
+          });
+        }
+      }
     } catch (e) {
       debugPrint("Error loading library: $e");
     }
@@ -334,6 +354,37 @@ class _AudioLooperScreenState extends State<AudioLooperScreen> {
       sourceSurahName: prev.sourceSurahName,
       sourceSurahId: prev.sourceSurahId,
     );
+  }
+
+  Future<void> _togglePlayPause() async {
+    HapticFeedback.mediumImpact();
+    if (_player.playing) {
+      await _player.pause();
+    } else {
+      if (_player.processingState == ProcessingState.idle ||
+          _player.processingState == ProcessingState.completed) {
+        if (_currentEntry != null) {
+          final resumePos = _position;
+          final sourceUri =
+              _currentEntry!.path.startsWith('http://') ||
+                  _currentEntry!.path.startsWith('https://')
+              ? Uri.parse(_currentEntry!.path)
+              : Uri.file(_currentEntry!.path);
+          try {
+            await _player.setAudioSource(
+              AudioSource.uri(sourceUri),
+              initialPosition: resumePos,
+            );
+            await _player.setLoopMode(_isLooping ? LoopMode.one : LoopMode.off);
+            await _player.play();
+            return;
+          } catch (e) {
+            debugPrint("Error recovering audio source: $e");
+          }
+        }
+      }
+      await _player.play();
+    }
   }
 
   void _stopPlayback() {
@@ -582,6 +633,16 @@ class _AudioLooperScreenState extends State<AudioLooperScreen> {
         ScaffoldMessenger.of(
           context,
         ).showSnackBar(const SnackBar(content: Text('Invalid audio path')));
+        return;
+      }
+
+      // Guard: If the requested audio is already loaded and ready/playing, do not re-set source
+      if (_currentEntry?.path == path &&
+          _player.audioSource != null &&
+          _player.processingState != ProcessingState.idle) {
+        if (!_player.playing) {
+          await _player.play();
+        }
         return;
       }
 
@@ -1030,10 +1091,11 @@ class _AudioLooperScreenState extends State<AudioLooperScreen> {
 
   @override
   void dispose() {
-    _player.dispose();
-    if (_supportsLocalPlaybackNotification) {
-      NotificationService().cancelNotification();
-    }
+    _positionSubscription?.cancel();
+    _durationSubscription?.cancel();
+    _playerStateSubscription?.cancel();
+    _noisySubscription?.cancel();
+    // Do NOT dispose _player! The single global AudioPlayer lives for the full app lifetime.
     super.dispose();
   }
 
@@ -1328,10 +1390,7 @@ class _AudioLooperScreenState extends State<AudioLooperScreen> {
                             _isPlaying ? Icons.pause : Icons.play_arrow,
                             color: Colors.black,
                           ),
-                          onPressed: () {
-                            HapticFeedback.mediumImpact();
-                            _isPlaying ? _player.pause() : _player.play();
-                          },
+                          onPressed: _togglePlayPause,
                         ),
                       ),
                       IconButton(

@@ -5,6 +5,7 @@ import 'package:just_audio/just_audio.dart';
 import 'package:path_provider/path_provider.dart';
 
 import '../../../../core/constants/app_colors.dart';
+import '../../../../services/audio_handler.dart';
 import '../../../../services/download_service.dart';
 import '../../../../shared/widgets/custom_audio_notification_bar.dart';
 import '../../../downloads/presentation/screens/youtube_download_screen.dart';
@@ -34,7 +35,7 @@ class _SurahSelectionScreenState extends State<SurahSelectionScreen> {
   String? _expandedSurahId;
   String? _localDirPath;
 
-  final AudioPlayer _player = AudioPlayer();
+  AudioPlayer get _player => appPlayer;
   bool _isPlayingPreview = false;
   StreamSubscription? _playerStateSubscription;
   StreamSubscription? _downloadSubscription;
@@ -81,7 +82,6 @@ class _SurahSelectionScreenState extends State<SurahSelectionScreen> {
   void dispose() {
     _playerStateSubscription?.cancel();
     _downloadSubscription?.cancel();
-    _player.dispose();
     super.dispose();
   }
 
