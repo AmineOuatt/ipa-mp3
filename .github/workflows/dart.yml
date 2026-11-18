@@ -57,13 +57,12 @@ jobs:
           overwrite: true
           body: |
             ### MP360 Release
-            - Persistent background playback with media notification (Android & iOS).
-            - Custom Flutter Audio Notification bar across all screens with waveform, track swapping, and 5s skip.
-            - Enhanced Android Home Screen widget compatible with Samsung Galaxy (One UI) & Redmi (MIUI/HyperOS).
-            - Hardened in-app YouTube downloader: multi-client Innertube fallback, candidate stream fallback (audio-only + muxed), 15s connection timeout, and atomic .part file handling.
-            - Direct full Quran reciter/imam suwar folder download.
-            - Single surah download integrated into the reactive download queue.
-            - Reactive download queue and status bar progress notifications.
+            - Balanced main player controls (Prev, -5s, Play/Pause, +5s, Next; stop button removed from main screen).
+            - Fixed audio playback stopping when navigating between screens with state recovery and shared lifecycle.
+            - Enhanced Android media notification and lock screen playback controls with monochrome status icon.
+            - Background playback, AudioSession interruption, and headphone unplugging (becoming noisy) support.
+            - Android Home Screen widget compatible with Samsung Galaxy (One UI) and Redmi (MIUI/HyperOS).
+            - Hardened in-app YouTube downloader and multi-surah reactive download queue.
 
   build-android:
     name: 🤖 Android APK Build & Release
@@ -102,10 +101,9 @@ jobs:
           overwrite: true
           body: |
             ### MP360 Release
-            - Persistent background playback with media notification (Android & iOS).
-            - Custom Flutter Audio Notification bar across all screens with waveform, track swapping, and 5s skip.
-            - Enhanced Android Home Screen widget compatible with Samsung Galaxy (One UI) & Redmi (MIUI/HyperOS).
-            - Hardened in-app YouTube downloader: multi-client Innertube fallback, candidate stream fallback (audio-only + muxed), 15s connection timeout, and atomic .part file handling.
-            - Direct full Quran reciter/imam suwar folder download.
-            - Single surah download integrated into the reactive download queue.
-            - Reactive download queue and status bar progress notifications.
+            - Balanced main player controls (Prev, -5s, Play/Pause, +5s, Next; stop button removed from main screen).
+            - Fixed audio playback stopping when navigating between screens with state recovery and shared lifecycle.
+            - Enhanced Android media notification and lock screen playback controls with monochrome status icon.
+            - Background playback, AudioSession interruption, and headphone unplugging (becoming noisy) support.
+            - Android Home Screen widget compatible with Samsung Galaxy (One UI) and Redmi (MIUI/HyperOS).
+            - Hardened in-app YouTube downloader and multi-surah reactive download queue.
