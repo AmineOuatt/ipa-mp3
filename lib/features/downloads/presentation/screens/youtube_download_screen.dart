@@ -8,6 +8,7 @@ import '../../../../core/utils/file_size_formatter.dart';
 import '../../../../models/models.dart';
 import '../../../../services/download_service.dart';
 import '../../../../shared/widgets/custom_audio_notification_bar.dart';
+import '../widgets/download_queue_sheet.dart';
 
 class YoutubeDownloadScreen extends StatefulWidget {
   const YoutubeDownloadScreen({super.key});
@@ -153,28 +154,47 @@ class _YoutubeDownloadScreenState extends State<YoutubeDownloadScreen> {
               'START DOWNLOAD',
               style: TextStyle(color: AppColors.primaryGreen),
             ),
-            onPressed: () {
+            onPressed: () async {
               final folder = folderController.text.trim();
               if (folder.isNotEmpty) {
-                _downloadService.enqueuePlaylistDownload(
-                  playlist: _previewPlaylist!,
-                  videos: _playlistVideos!,
+                final scaffoldMessenger = ScaffoldMessenger.of(context);
+                final playlist = _previewPlaylist!;
+                final videos = _playlistVideos!;
+                Navigator.pop(context);
+
+                final result = await _downloadService.enqueuePlaylistDownload(
+                  playlist: playlist,
+                  videos: videos,
                   customFolderName: folder,
                 );
-                Navigator.pop(context);
-                ScaffoldMessenger.of(context).showSnackBar(
+                final skipped = result['skipped'] ?? 0;
+                final remaining = result['remaining'] ?? 0;
+                final msg = (skipped > 0)
+                    ? '$skipped already downloaded, $remaining remaining'
+                    : 'Queued $remaining tracks in folder "$folder"';
+
+                scaffoldMessenger.showSnackBar(
                   SnackBar(
-                    content: Text(
-                      'Queued ${_playlistVideos!.length} tracks in folder "$folder"',
-                    ),
+                    content: Text(msg),
                     backgroundColor: AppColors.primaryGreen,
+                    action: SnackBarAction(
+                      label: 'VIEW QUEUE',
+                      textColor: Colors.black,
+                      onPressed: () {
+                        if (mounted) {
+                          showDownloadQueue(context);
+                        }
+                      },
+                    ),
                   ),
                 );
-                setState(() {
-                  _previewPlaylist = null;
-                  _playlistVideos = null;
-                  _urlController.clear();
-                });
+                if (mounted) {
+                  setState(() {
+                    _previewPlaylist = null;
+                    _playlistVideos = null;
+                    _urlController.clear();
+                  });
+                }
               }
             },
           ),
@@ -297,7 +317,6 @@ class _YoutubeDownloadScreenState extends State<YoutubeDownloadScreen> {
           Padding(
             padding: const EdgeInsets.symmetric(horizontal: 16),
             child: Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
                 const Text(
                   'Download Queue',
@@ -307,12 +326,54 @@ class _YoutubeDownloadScreenState extends State<YoutubeDownloadScreen> {
                     fontWeight: FontWeight.bold,
                   ),
                 ),
-                TextButton(
-                  onPressed: () => _downloadService.cancelAll(),
-                  child: const Text(
-                    'Cancel All',
-                    style: TextStyle(color: Colors.redAccent),
-                  ),
+                const Spacer(),
+                StreamBuilder<List<DownloadTask>>(
+                  stream: _downloadService.tasksStream,
+                  initialData: _downloadService.tasks,
+                  builder: (context, snapshot) {
+                    final tasks = snapshot.data ?? [];
+                    final hasActive = tasks.any((t) => t.isActive);
+                    final hasStopped =
+                        tasks.any((t) => t.isStopped || t.isFailed);
+                    final hasCompleted = tasks.any((t) => t.isCompleted);
+
+                    return Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        if (hasActive)
+                          TextButton(
+                            onPressed: () => _downloadService.stopAll(),
+                            child: const Text(
+                              'Stop All',
+                              style: TextStyle(
+                                color: Colors.orangeAccent,
+                                fontSize: 12,
+                              ),
+                            ),
+                          ),
+                        if (hasStopped)
+                          TextButton(
+                            onPressed: () => _downloadService.resumeAll(),
+                            child: const Text(
+                              'Resume All',
+                              style: TextStyle(
+                                color: AppColors.primaryGreen,
+                                fontSize: 12,
+                              ),
+                            ),
+                          ),
+                        if (hasCompleted)
+                          TextButton(
+                            onPressed: () => _downloadService.clearCompleted(),
+                            child: const Text(
+                              'Clear',
+                              style:
+                                  TextStyle(color: Colors.grey, fontSize: 12),
+                            ),
+                          ),
+                      ],
+                    );
+                  },
                 ),
               ],
             ),
@@ -527,36 +588,82 @@ class _YoutubeDownloadScreenState extends State<YoutubeDownloadScreen> {
               ),
               if (task.isActive)
                 IconButton(
-                  icon: const Icon(Icons.close, color: Colors.grey, size: 18),
-                  tooltip: 'Cancel',
-                  onPressed: () => _downloadService.cancelTask(task.id),
+                  icon: const Icon(
+                    Icons.stop_circle_outlined,
+                    color: Colors.orangeAccent,
+                    size: 20,
+                  ),
+                  tooltip: 'Stop',
+                  onPressed: () => _downloadService.stopTask(task.id),
                 )
-              else if (task.isFailed)
+              else if (task.isStopped) ...[
+                IconButton(
+                  icon: const Icon(
+                    Icons.play_circle_outline,
+                    color: AppColors.primaryGreen,
+                    size: 20,
+                  ),
+                  tooltip: 'Resume',
+                  onPressed: () => _downloadService.resumeTask(task.id),
+                ),
+                IconButton(
+                  icon: const Icon(
+                    Icons.delete_outline,
+                    color: Colors.redAccent,
+                    size: 20,
+                  ),
+                  tooltip: 'Remove',
+                  onPressed: () => _downloadService.removeTask(task.id),
+                ),
+              ] else if (task.isFailed) ...[
                 IconButton(
                   icon: const Icon(
                     Icons.refresh,
                     color: Colors.orangeAccent,
-                    size: 18,
+                    size: 20,
                   ),
                   tooltip: 'Retry',
-                  onPressed: () => _downloadService.retryTask(task.id),
+                  onPressed: () => _downloadService.resumeTask(task.id),
+                ),
+                IconButton(
+                  icon: const Icon(
+                    Icons.delete_outline,
+                    color: Colors.redAccent,
+                    size: 20,
+                  ),
+                  tooltip: 'Remove',
+                  onPressed: () => _downloadService.removeTask(task.id),
+                ),
+              ] else if (task.isCompleted)
+                IconButton(
+                  icon: const Icon(Icons.close, color: Colors.grey, size: 18),
+                  tooltip: 'Remove',
+                  onPressed: () => _downloadService.removeTask(task.id),
                 ),
             ],
           ),
-          if (task.status == DownloadStatus.downloading) ...[
+          if (task.status == DownloadStatus.downloading ||
+              (task.isStopped && task.downloadedBytes > 0)) ...[
             const SizedBox(height: 8),
             LinearProgressIndicator(
               value: task.progress > 0 ? task.progress : null,
               backgroundColor: Colors.white12,
-              color: AppColors.primaryGreen,
+              color: task.isStopped
+                  ? Colors.orangeAccent
+                  : AppColors.primaryGreen,
             ),
             const SizedBox(height: 4),
             Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
                 Text(
-                  '${(task.progress * 100).toStringAsFixed(1)}%',
-                  style: const TextStyle(color: Colors.grey, fontSize: 11),
+                  task.isStopped
+                      ? 'Stopped (${(task.progress * 100).toStringAsFixed(1)}%)'
+                      : '${(task.progress * 100).toStringAsFixed(1)}%',
+                  style: TextStyle(
+                    color: task.isStopped ? Colors.orangeAccent : Colors.grey,
+                    fontSize: 11,
+                  ),
                 ),
                 Text(
                   '${formatFileSize(task.downloadedBytes)} / ${formatFileSize(task.totalBytes)}',

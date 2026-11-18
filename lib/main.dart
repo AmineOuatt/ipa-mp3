@@ -9,6 +9,7 @@ import 'core/l10n/generated/app_localizations.dart';
 import 'core/theme/app_theme.dart';
 import 'features/player/presentation/screens/audio_looper_screen.dart';
 import 'services/audio_handler.dart';
+import 'services/download_service.dart';
 import 'services/notification_service.dart';
 
 export 'services/audio_handler.dart' show appPlayer, appAudioHandler;
@@ -55,6 +56,12 @@ void main() async {
     }
   } catch (e) {
     debugPrint('Notification init skipped: $e');
+  }
+
+  try {
+    await DownloadService.instance.init();
+  } catch (e) {
+    debugPrint('DownloadService init skipped: $e');
   }
 
   runApp(const AudioRepeaterApp());
