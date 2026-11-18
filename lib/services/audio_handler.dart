@@ -105,6 +105,7 @@ class AppAudioHandler extends BaseAudioHandler with SeekHandler {
 
   VoidCallback? onSkipToNext;
   VoidCallback? onSkipToPrevious;
+  VoidCallback? onStopRequested;
 
   @override
   Future<void> play() => _player.play();
@@ -114,7 +115,15 @@ class AppAudioHandler extends BaseAudioHandler with SeekHandler {
 
   @override
   Future<void> stop() async {
+    onStopRequested?.call();
     await _player.stop();
+    await _player.seek(Duration.zero);
+    playbackState.add(
+      playbackState.value.copyWith(
+        processingState: AudioProcessingState.idle,
+        playing: false,
+      ),
+    );
     await WidgetService.clearWidget();
     return super.stop();
   }
@@ -137,14 +146,18 @@ class AppAudioHandler extends BaseAudioHandler with SeekHandler {
     final current = _player.position;
     final target = current + const Duration(seconds: 5);
     final duration = _player.duration ?? Duration.zero;
-    await _player.seek(target < duration ? target : duration);
+    final newPos = target < duration ? target : duration;
+    await _player.seek(newPos);
+    playbackState.add(playbackState.value.copyWith(updatePosition: newPos));
   }
 
   @override
   Future<void> rewind() async {
     final current = _player.position;
     final target = current - const Duration(seconds: 5);
-    await _player.seek(target > Duration.zero ? target : Duration.zero);
+    final newPos = target > Duration.zero ? target : Duration.zero;
+    await _player.seek(newPos);
+    playbackState.add(playbackState.value.copyWith(updatePosition: newPos));
   }
 }
 

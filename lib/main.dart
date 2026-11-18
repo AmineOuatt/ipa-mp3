@@ -26,7 +26,14 @@ void main() async {
         config: const AudioServiceConfig(
           androidNotificationChannelId: 'com.example.mp3.channel.audio',
           androidNotificationChannelName: 'MP360 Playback',
+          androidNotificationChannelDescription:
+              'MP360 Audio Player Background Controls',
           androidNotificationIcon: 'mipmap/ic_launcher',
+          fastForwardInterval: Duration(seconds: 5),
+          rewindInterval: Duration(seconds: 5),
+          androidStopForegroundOnPause: false,
+          androidNotificationOngoing: false,
+          androidResumeOnClick: true,
         ),
       );
       appPlayer = appAudioHandler!.player;

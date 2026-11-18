@@ -58,8 +58,8 @@ jobs:
           body: |
             ### MP360 Release
             - Persistent background playback with media notification (Android & iOS).
-            - Full Arabic and English localization with instant language switch.
-            - Android Home Screen audio player widget.
+            - Custom Flutter Audio Notification bar across all screens with waveform, track swapping, and 5s skip.
+            - Enhanced Android Home Screen widget compatible with Samsung Galaxy (One UI) & Redmi (MIUI/HyperOS).
             - Hardened in-app YouTube downloader: multi-client Innertube fallback, candidate stream fallback (audio-only + muxed), 15s connection timeout, and atomic .part file handling.
             - Direct full Quran reciter/imam suwar folder download.
             - Single surah download integrated into the reactive download queue.
@@ -103,8 +103,8 @@ jobs:
           body: |
             ### MP360 Release
             - Persistent background playback with media notification (Android & iOS).
-            - Full Arabic and English localization with instant language switch.
-            - Android Home Screen audio player widget.
+            - Custom Flutter Audio Notification bar across all screens with waveform, track swapping, and 5s skip.
+            - Enhanced Android Home Screen widget compatible with Samsung Galaxy (One UI) & Redmi (MIUI/HyperOS).
             - Hardened in-app YouTube downloader: multi-client Innertube fallback, candidate stream fallback (audio-only + muxed), 15s connection timeout, and atomic .part file handling.
             - Direct full Quran reciter/imam suwar folder download.
             - Single surah download integrated into the reactive download queue.

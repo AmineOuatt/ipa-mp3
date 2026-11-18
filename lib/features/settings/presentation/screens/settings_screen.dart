@@ -5,6 +5,7 @@ import '../../../../core/l10n/generated/app_localizations.dart';
 import '../../../../main.dart';
 import '../../../about/presentation/screens/about_screen.dart';
 import '../../../downloads/presentation/screens/youtube_download_screen.dart';
+import '../../../../shared/widgets/custom_audio_notification_bar.dart';
 
 class SettingsScreen extends StatefulWidget {
   const SettingsScreen({super.key});
@@ -45,6 +46,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
     return Scaffold(
       backgroundColor: AppColors.background,
+      bottomNavigationBar: const CustomAudioNotificationBar(),
       appBar: AppBar(
         title: Text(l10n?.settings ?? 'Settings'),
         backgroundColor: Colors.transparent,

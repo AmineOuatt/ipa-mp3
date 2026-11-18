@@ -6,6 +6,7 @@ import 'package:path_provider/path_provider.dart';
 
 import '../../../../core/constants/app_colors.dart';
 import '../../../../services/download_service.dart';
+import '../../../../shared/widgets/custom_audio_notification_bar.dart';
 import '../../../downloads/presentation/screens/youtube_download_screen.dart';
 
 class SurahSelectionScreen extends StatefulWidget {
@@ -262,6 +263,7 @@ class _SurahSelectionScreenState extends State<SurahSelectionScreen> {
 
     return Scaffold(
       backgroundColor: AppColors.background,
+      bottomNavigationBar: const CustomAudioNotificationBar(),
       appBar: AppBar(
         backgroundColor: Colors.transparent,
         elevation: 0,

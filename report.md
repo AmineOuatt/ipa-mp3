@@ -62,13 +62,24 @@
    - Appears immediately in the global Download Queue (`YoutubeDownloadScreen`) and displays ongoing status bar progress notification.
    - Interactive circular progress indicator right on the surah tile, transitioning to "Use Audio (Offline)" upon completion.
 
+9. **B9: Samsung Galaxy & Xiaomi Redmi Widget & Notification Fix + Custom Flutter Player Bar**
+   - **Root Cause Diagnosed**:
+     - `androidStopForegroundOnPause: true` allowed MIUI/One UI aggressive battery savers to terminate the background media service and discard the notification on pause.
+     - `SavedAudioEntry` lacked `operator ==` and `hashCode`, causing `_library.indexOf(_currentEntry!)` to return `-1`, breaking track switching ("swap between audios").
+     - `Mp3AppWidgetProvider` only emitted `ACTION_DOWN` without `ACTION_UP` via package-level broadcast, which Samsung Knox and Xiaomi MIUI drop.
+   - **Solutions Implemented**:
+     - Configured `androidStopForegroundOnPause: false` and `androidNotificationOngoing: false` so playback services remain resilient on Samsung & Redmi.
+     - Implemented `SavedAudioEntry` equality by `path` and cyclical next/previous audio swapping.
+     - Updated Android Home Screen Widget (`Mp3AppWidgetProvider`) with explicit component targeting, complete key clicks (`ACTION_DOWN` + `ACTION_UP`), and 6 full controls: Previous, -5s Rewind, Play/Pause, +5s Fast Forward, Next, and Stop.
+     - Built **`CustomAudioNotificationBar`**: a high-end Flutter notification-style mini-player widget embedded persistently across screens with real-time waveform icon, progress slider, Stop, -5s rewind, Play/Pause, +5s forward, and track swapping (Prev/Next).
+
 ---
 
 ## 3. Build & Verification Status
 
 | Item | Details | Status |
 | :--- | :--- | :--- |
-| **Dart Format** | 35 files formatted cleanly | Passed |
+| **Dart Format** | 36 files formatted cleanly | Passed |
 | **Flutter Analyze** | 0 errors, 0 warnings | Clean |
 | **Flutter Test** | All widget & unit tests passing | Passed |
 | **Release APK** | `build/app/outputs/flutter-apk/app-release.apk` (57.4 MB) | Built & Verified |
@@ -77,7 +88,12 @@
 
 ## 4. Releases & Download Links
 
-### 🚀 Release v4.2 (Latest)
+### 🚀 Release v4.3 (Latest)
+- **Release Page**: [GitHub Release v4.3](https://github.com/AmineOuatt/ipa-mp3/releases/tag/v4.3)
+- **Android APK**: [Download MP360-v4.3.apk (60.1 MB)](https://github.com/AmineOuatt/ipa-mp3/releases/download/v4.3/MP360-v4.3.apk)
+- **iOS IPA**: [Download MP360-v4.3.ipa (9.55 MB)](https://github.com/AmineOuatt/ipa-mp3/releases/download/v4.3/MP360-v4.3.ipa)
+
+### 📦 Release v4.2
 - **Release Page**: [GitHub Release v4.2](https://github.com/AmineOuatt/ipa-mp3/releases/tag/v4.2)
 - **Android APK**: [Download MP360-v4.2.apk (60.1 MB)](https://github.com/AmineOuatt/ipa-mp3/releases/download/v4.2/MP360-v4.2.apk)
 - **iOS IPA**: [Download MP360-v4.2.ipa (9.55 MB)](https://github.com/AmineOuatt/ipa-mp3/releases/download/v4.2/MP360-v4.2.ipa)

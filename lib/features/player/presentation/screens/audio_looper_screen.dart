@@ -102,34 +102,9 @@ class _AudioLooperScreenState extends State<AudioLooperScreen> {
         });
 
         if (appAudioHandler != null) {
-          appAudioHandler!.onSkipToNext = () {
-            if (_library.isEmpty || _currentEntry == null) return;
-            final idx = _library.indexOf(_currentEntry!);
-            if (idx != -1 && idx + 1 < _library.length) {
-              final next = _library[idx + 1];
-              _loadFile(
-                next.path,
-                next.name,
-                sourceReciterName: next.sourceReciterName,
-                sourceSurahName: next.sourceSurahName,
-                sourceSurahId: next.sourceSurahId,
-              );
-            }
-          };
-          appAudioHandler!.onSkipToPrevious = () {
-            if (_library.isEmpty || _currentEntry == null) return;
-            final idx = _library.indexOf(_currentEntry!);
-            if (idx > 0) {
-              final prev = _library[idx - 1];
-              _loadFile(
-                prev.path,
-                prev.name,
-                sourceReciterName: prev.sourceReciterName,
-                sourceSurahName: prev.sourceSurahName,
-                sourceSurahId: prev.sourceSurahId,
-              );
-            }
-          };
+          appAudioHandler!.onSkipToNext = _skipToNextAudio;
+          appAudioHandler!.onSkipToPrevious = _skipToPreviousAudio;
+          appAudioHandler!.onStopRequested = _stopPlayback;
         }
       }
     } catch (e) {
@@ -325,6 +300,51 @@ class _AudioLooperScreenState extends State<AudioLooperScreen> {
 
     final groupsJson = jsonEncode(_audioGroups.map((g) => g.toJson()).toList());
     await _prefs?.setString('audioGroups', groupsJson);
+  }
+
+  void _skipToNextAudio() {
+    if (_library.isEmpty) return;
+    int idx = -1;
+    if (_currentEntry != null) {
+      idx = _library.indexWhere((e) => e.path == _currentEntry!.path);
+    }
+    final nextIdx = (idx == -1) ? 0 : (idx + 1) % _library.length;
+    final next = _library[nextIdx];
+    _loadFile(
+      next.path,
+      next.name,
+      sourceReciterName: next.sourceReciterName,
+      sourceSurahName: next.sourceSurahName,
+      sourceSurahId: next.sourceSurahId,
+    );
+  }
+
+  void _skipToPreviousAudio() {
+    if (_library.isEmpty) return;
+    int idx = -1;
+    if (_currentEntry != null) {
+      idx = _library.indexWhere((e) => e.path == _currentEntry!.path);
+    }
+    final prevIdx = (idx <= 0) ? _library.length - 1 : idx - 1;
+    final prev = _library[prevIdx];
+    _loadFile(
+      prev.path,
+      prev.name,
+      sourceReciterName: prev.sourceReciterName,
+      sourceSurahName: prev.sourceSurahName,
+      sourceSurahId: prev.sourceSurahId,
+    );
+  }
+
+  void _stopPlayback() {
+    HapticFeedback.mediumImpact();
+    _player.stop();
+    _player.seek(Duration.zero);
+    setState(() {
+      _isPlaying = false;
+      _position = Duration.zero;
+    });
+    appAudioHandler?.stop();
   }
 
   void _consumeQuranBrowserResult(Map result) {
@@ -1203,10 +1223,27 @@ class _AudioLooperScreenState extends State<AudioLooperScreen> {
                   ),
                   const SizedBox(height: 6),
 
-                  // Set Bounds Controls
+                  // Set Bounds Controls & Secondary Actions
                   Row(
                     mainAxisAlignment: MainAxisAlignment.spaceEvenly,
                     children: [
+                      IconButton(
+                        tooltip: "Loop mode",
+                        icon: Icon(
+                          _isLooping ? Icons.repeat_on : Icons.repeat,
+                          color: _isLooping
+                              ? const Color(0xFF1DB954)
+                              : Colors.grey,
+                          size: 22,
+                        ),
+                        onPressed: () {
+                          HapticFeedback.selectionClick();
+                          setState(() => _isLooping = !_isLooping);
+                          _player.setLoopMode(
+                            _isLooping ? LoopMode.one : LoopMode.off,
+                          );
+                        },
+                      ),
                       _buildControlBtn("Set Start", () {
                         HapticFeedback.mediumImpact();
                         setState(() {
@@ -1240,36 +1277,37 @@ class _AudioLooperScreenState extends State<AudioLooperScreen> {
                           _isLooping ? LoopMode.one : LoopMode.off,
                         );
                       }),
+                      IconButton(
+                        tooltip: "Save segment",
+                        icon: const Icon(
+                          Icons.bookmark_add,
+                          color: Colors.white,
+                          size: 22,
+                        ),
+                        onPressed: _currentEntry != null ? _saveSegment : null,
+                      ),
                     ],
                   ),
                   const SizedBox(height: 8),
 
-                  // Main Controls (+-5s seek around play button)
+                  // Main Controls: Previous, -5s, Play/Pause, Stop, +5s, Next
                   Row(
                     mainAxisAlignment: MainAxisAlignment.center,
                     children: [
                       IconButton(
-                        icon: Icon(
-                          _isLooping ? Icons.repeat_on : Icons.repeat,
-                          color: _isLooping
-                              ? const Color(0xFF1DB954)
-                              : Colors.grey,
-                          size: 22,
+                        tooltip: "Previous Audio",
+                        iconSize: 28,
+                        icon: const Icon(
+                          Icons.skip_previous_rounded,
+                          color: Colors.white,
                         ),
-                        onPressed: () {
-                          HapticFeedback.selectionClick();
-                          setState(() => _isLooping = !_isLooping);
-                          _player.setLoopMode(
-                            _isLooping ? LoopMode.one : LoopMode.off,
-                          );
-                        },
+                        onPressed: _skipToPreviousAudio,
                       ),
-                      const SizedBox(width: 10),
-
                       IconButton(
+                        tooltip: "Pass -5s",
                         iconSize: 26,
                         icon: const Icon(
-                          Icons.fast_rewind,
+                          Icons.replay_5_rounded,
                           color: Colors.white,
                         ),
                         onPressed: () {
@@ -1277,15 +1315,14 @@ class _AudioLooperScreenState extends State<AudioLooperScreen> {
                           _seekBy(const Duration(seconds: -5));
                         },
                       ),
-
                       Container(
-                        margin: const EdgeInsets.symmetric(horizontal: 6),
+                        margin: const EdgeInsets.symmetric(horizontal: 4),
                         decoration: const BoxDecoration(
                           color: Color(0xFF1DB954),
                           shape: BoxShape.circle,
                         ),
                         child: IconButton(
-                          iconSize: 40,
+                          iconSize: 38,
                           padding: const EdgeInsets.all(9),
                           icon: Icon(
                             _isPlaying ? Icons.pause : Icons.play_arrow,
@@ -1297,11 +1334,20 @@ class _AudioLooperScreenState extends State<AudioLooperScreen> {
                           },
                         ),
                       ),
-
                       IconButton(
+                        tooltip: "Stop",
                         iconSize: 26,
                         icon: const Icon(
-                          Icons.fast_forward,
+                          Icons.stop_circle_outlined,
+                          color: Colors.redAccent,
+                        ),
+                        onPressed: _stopPlayback,
+                      ),
+                      IconButton(
+                        tooltip: "Pass +5s",
+                        iconSize: 26,
+                        icon: const Icon(
+                          Icons.forward_5_rounded,
                           color: Colors.white,
                         ),
                         onPressed: () {
@@ -1309,15 +1355,14 @@ class _AudioLooperScreenState extends State<AudioLooperScreen> {
                           _seekBy(const Duration(seconds: 5));
                         },
                       ),
-
-                      const SizedBox(width: 10),
                       IconButton(
+                        tooltip: "Next Audio",
+                        iconSize: 28,
                         icon: const Icon(
-                          Icons.bookmark_add,
+                          Icons.skip_next_rounded,
                           color: Colors.white,
-                          size: 22,
                         ),
-                        onPressed: _currentEntry != null ? _saveSegment : null,
+                        onPressed: _skipToNextAudio,
                       ),
                     ],
                   ),

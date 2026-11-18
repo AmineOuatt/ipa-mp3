@@ -7,6 +7,7 @@ import '../../../../core/utils/duration_formatter.dart';
 import '../../../../core/utils/file_size_formatter.dart';
 import '../../../../models/models.dart';
 import '../../../../services/download_service.dart';
+import '../../../../shared/widgets/custom_audio_notification_bar.dart';
 
 class YoutubeDownloadScreen extends StatefulWidget {
   const YoutubeDownloadScreen({super.key});
@@ -186,6 +187,7 @@ class _YoutubeDownloadScreenState extends State<YoutubeDownloadScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: AppColors.background,
+      bottomNavigationBar: const CustomAudioNotificationBar(),
       appBar: AppBar(
         title: const Text('YouTube Audio Downloader'),
         backgroundColor: Colors.transparent,

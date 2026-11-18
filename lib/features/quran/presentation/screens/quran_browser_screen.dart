@@ -5,6 +5,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import '../../../../core/constants/app_colors.dart';
 import '../../../../services/download_service.dart';
+import '../../../../shared/widgets/custom_audio_notification_bar.dart';
 import '../../../downloads/presentation/screens/youtube_download_screen.dart';
 import 'surah_selection_screen.dart';
 
@@ -287,6 +288,7 @@ class _QuranBrowserModeState extends State<QuranBrowserMode> {
 
     return Scaffold(
       backgroundColor: AppColors.background,
+      bottomNavigationBar: const CustomAudioNotificationBar(),
       appBar: AppBar(
         backgroundColor: Colors.transparent,
         elevation: 0,

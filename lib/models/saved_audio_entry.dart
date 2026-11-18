@@ -41,4 +41,14 @@ class SavedAudioEntry {
         sourceSurahName: json['sourceSurahName'],
         sourceSurahId: json['sourceSurahId'],
       );
+
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is SavedAudioEntry &&
+          runtimeType == other.runtimeType &&
+          path == other.path;
+
+  @override
+  int get hashCode => path.hashCode;
 }

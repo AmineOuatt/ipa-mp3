@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:package_info_plus/package_info_plus.dart';
 import '../../../../core/constants/app_colors.dart';
 import '../../../../core/l10n/generated/app_localizations.dart';
+import '../../../../shared/widgets/custom_audio_notification_bar.dart';
 
 class AboutScreen extends StatefulWidget {
   const AboutScreen({super.key});
@@ -40,6 +41,7 @@ class _AboutScreenState extends State<AboutScreen> {
 
     return Scaffold(
       backgroundColor: AppColors.background,
+      bottomNavigationBar: const CustomAudioNotificationBar(),
       appBar: AppBar(
         title: Text(l10n?.aboutTitle ?? 'About MP360'),
         backgroundColor: Colors.transparent,
