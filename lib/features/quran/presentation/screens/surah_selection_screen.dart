@@ -8,7 +8,7 @@ import '../../../../core/constants/app_colors.dart';
 import '../../../../services/audio_handler.dart';
 import '../../../../services/download_service.dart';
 import '../../../../shared/widgets/custom_audio_notification_bar.dart';
-import '../../../downloads/presentation/screens/youtube_download_screen.dart';
+import '../../../downloads/presentation/widgets/download_queue_sheet.dart';
 
 class SurahSelectionScreen extends StatefulWidget {
   final String reciterName;
@@ -164,7 +164,14 @@ class _SurahSelectionScreenState extends State<SurahSelectionScreen> {
         SnackBar(
           content: Text("Added to download queue: ${surah['name']}"),
           backgroundColor: AppColors.primary,
-          duration: const Duration(seconds: 2),
+          duration: const Duration(seconds: 3),
+          action: SnackBarAction(
+            label: 'VIEW QUEUE',
+            textColor: Colors.black,
+            onPressed: () {
+              showDownloadQueue(context);
+            },
+          ),
         ),
       );
       setState(() {});
@@ -217,22 +224,35 @@ class _SurahSelectionScreenState extends State<SurahSelectionScreen> {
               backgroundColor: AppColors.primary,
               foregroundColor: Colors.black,
             ),
-            onPressed: () {
+            onPressed: () async {
               final folder = folderController.text.trim();
               if (folder.isNotEmpty) {
-                DownloadService.instance.enqueueQuranReciterDownload(
-                  reciterName: widget.reciterName,
-                  serverUrl: widget.moshaf['server'],
-                  suwarToDownload: allAvailableSuwar,
-                  customFolderName: folder,
-                );
+                final scaffoldMessenger = ScaffoldMessenger.of(context);
+                final parentContext = context;
                 Navigator.pop(context);
-                ScaffoldMessenger.of(context).showSnackBar(
+                final result = await DownloadService.instance
+                    .enqueueQuranReciterDownload(
+                      reciterName: widget.reciterName,
+                      serverUrl: widget.moshaf['server'],
+                      suwarToDownload: allAvailableSuwar,
+                      customFolderName: folder,
+                    );
+                final skipped = result['skipped'] ?? 0;
+                final remaining = result['remaining'] ?? 0;
+                final msg = (skipped > 0)
+                    ? '$skipped already downloaded, $remaining remaining'
+                    : 'Queued $remaining suwar in folder "$folder"';
+                scaffoldMessenger.showSnackBar(
                   SnackBar(
-                    content: Text(
-                      'Queued ${allAvailableSuwar.length} suwar in folder "$folder"',
-                    ),
+                    content: Text(msg),
                     backgroundColor: AppColors.primary,
+                    action: SnackBarAction(
+                      label: 'VIEW QUEUE',
+                      textColor: Colors.black,
+                      onPressed: () {
+                        showDownloadQueue(parentContext);
+                      },
+                    ),
                   ),
                 );
               }
@@ -275,14 +295,7 @@ class _SurahSelectionScreenState extends State<SurahSelectionScreen> {
           IconButton(
             icon: const Icon(Icons.download_rounded, color: Colors.white70),
             tooltip: 'View Download Queue',
-            onPressed: () {
-              Navigator.push(
-                context,
-                MaterialPageRoute(
-                  builder: (context) => const YoutubeDownloadScreen(),
-                ),
-              );
-            },
+            onPressed: () => showDownloadQueue(context),
           ),
           IconButton(
             icon: const Icon(

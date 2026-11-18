@@ -96,14 +96,5 @@
             android:src="@android:drawable/ic_media_next"
             android:tint="#FFFFFF"
             android:contentDescription="Next" />
-
-        <ImageButton
-            android:id="@+id/widget_btn_stop"
-            android:layout_width="32dp"
-            android:layout_height="32dp"
-            android:background="?android:attr/selectableItemBackgroundBorderless"
-            android:src="@drawable/ic_widget_stop"
-            android:tint="#FF5252"
-            android:contentDescription="Stop" />
     </LinearLayout>
 </LinearLayout>

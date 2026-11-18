@@ -6,7 +6,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import '../../../../core/constants/app_colors.dart';
 import '../../../../services/download_service.dart';
 import '../../../../shared/widgets/custom_audio_notification_bar.dart';
-import '../../../downloads/presentation/screens/youtube_download_screen.dart';
+import '../../../downloads/presentation/widgets/download_queue_sheet.dart';
 import 'surah_selection_screen.dart';
 
 class QuranBrowserMode extends StatefulWidget {
@@ -235,32 +235,34 @@ class _QuranBrowserModeState extends State<QuranBrowserMode> {
                 fontWeight: FontWeight.bold,
               ),
             ),
-            onPressed: () {
+            onPressed: () async {
               final folder = folderController.text.trim();
               if (folder.isNotEmpty) {
-                DownloadService.instance.enqueueQuranReciterDownload(
-                  reciterName: reciterName,
-                  serverUrl: moshaf['server'].toString(),
-                  suwarToDownload: allSuwar,
-                  customFolderName: folder,
-                );
+                final scaffoldMessenger = ScaffoldMessenger.of(context);
+                final parentContext = context;
                 Navigator.pop(context);
-                ScaffoldMessenger.of(context).showSnackBar(
+                final result = await DownloadService.instance
+                    .enqueueQuranReciterDownload(
+                      reciterName: reciterName,
+                      serverUrl: moshaf['server'].toString(),
+                      suwarToDownload: allSuwar,
+                      customFolderName: folder,
+                    );
+                final skipped = result['skipped'] ?? 0;
+                final remaining = result['remaining'] ?? 0;
+                final msg = (skipped > 0)
+                    ? '$skipped already downloaded, $remaining remaining'
+                    : 'Queued $remaining suwar into folder "$folder"';
+
+                scaffoldMessenger.showSnackBar(
                   SnackBar(
-                    content: Text(
-                      'Queued ${allSuwar.length} suwar into folder "$folder"',
-                    ),
+                    content: Text(msg),
                     backgroundColor: AppColors.primary,
                     action: SnackBarAction(
                       label: 'VIEW QUEUE',
                       textColor: Colors.black,
                       onPressed: () {
-                        Navigator.push(
-                          context,
-                          MaterialPageRoute(
-                            builder: (_) => const YoutubeDownloadScreen(),
-                          ),
-                        );
+                        showDownloadQueue(parentContext);
                       },
                     ),
                   ),

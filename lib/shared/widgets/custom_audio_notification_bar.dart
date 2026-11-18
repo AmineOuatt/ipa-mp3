@@ -182,7 +182,7 @@ class CustomAudioNotificationBar extends StatelessWidget {
                                   appAudioHandler?.skipToPrevious();
                                 },
                               ),
-                              const SizedBox(width: 4),
+                              const SizedBox(width: 6),
 
                               // Pass -5s
                               IconButton(
@@ -199,7 +199,7 @@ class CustomAudioNotificationBar extends StatelessWidget {
                                   appAudioHandler?.rewind();
                                 },
                               ),
-                              const SizedBox(width: 4),
+                              const SizedBox(width: 6),
 
                               // Play / Pause
                               Container(
@@ -225,7 +225,7 @@ class CustomAudioNotificationBar extends StatelessWidget {
                                   },
                                 ),
                               ),
-                              const SizedBox(width: 4),
+                              const SizedBox(width: 6),
 
                               // Pass +5s
                               IconButton(
@@ -242,7 +242,7 @@ class CustomAudioNotificationBar extends StatelessWidget {
                                   appAudioHandler?.fastForward();
                                 },
                               ),
-                              const SizedBox(width: 4),
+                              const SizedBox(width: 6),
 
                               // Swap to Next
                               IconButton(
@@ -257,23 +257,6 @@ class CustomAudioNotificationBar extends StatelessWidget {
                                 onPressed: () {
                                   HapticFeedback.selectionClick();
                                   appAudioHandler?.skipToNext();
-                                },
-                              ),
-                              const SizedBox(width: 4),
-
-                              // Stop
-                              IconButton(
-                                tooltip: 'Stop',
-                                iconSize: 20,
-                                padding: const EdgeInsets.all(4),
-                                constraints: const BoxConstraints(),
-                                icon: const Icon(
-                                  Icons.stop_circle_outlined,
-                                  color: Colors.redAccent,
-                                ),
-                                onPressed: () {
-                                  HapticFeedback.mediumImpact();
-                                  appAudioHandler?.stop();
                                 },
                               ),
                             ],
