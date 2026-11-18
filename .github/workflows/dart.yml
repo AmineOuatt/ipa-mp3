@@ -60,7 +60,7 @@ jobs:
             - Persistent background playback with media notification (Android & iOS).
             - Full Arabic and English localization with instant language switch.
             - Android Home Screen audio player widget.
-            - In-app YouTube single audio & full playlist folder downloader.
+            - Hardened in-app YouTube downloader: multi-client Innertube fallback, candidate stream fallback (audio-only + muxed), 15s connection timeout, and atomic .part file handling.
             - Direct full Quran reciter/imam suwar folder download.
             - Single surah download integrated into the reactive download queue.
             - Reactive download queue and status bar progress notifications.
@@ -105,7 +105,7 @@ jobs:
             - Persistent background playback with media notification (Android & iOS).
             - Full Arabic and English localization with instant language switch.
             - Android Home Screen audio player widget.
-            - In-app YouTube single audio & full playlist folder downloader.
+            - Hardened in-app YouTube downloader: multi-client Innertube fallback, candidate stream fallback (audio-only + muxed), 15s connection timeout, and atomic .part file handling.
             - Direct full Quran reciter/imam suwar folder download.
             - Single surah download integrated into the reactive download queue.
             - Reactive download queue and status bar progress notifications.
